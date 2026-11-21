@@ -20,6 +20,15 @@
 #include "trig.h"
 #include "uart_radar.h"
 
+/* `make RADAR_SETUP=1` builds the one-time radar baud switch instead of the
+ * normal firmware. */
+#ifndef RADAR_SETUP
+#define RADAR_SETUP 0
+#endif
+#if RADAR_SETUP
+#include "radar_setup.h"
+#endif
+
 /* Screen refresh periods. The display is slow (about 1.35 ms per scale-2
  * character), so values are redrawn at 5 Hz and only when they change. The
  * parser still consumes every frame as it arrives. */
@@ -175,6 +184,13 @@ int main(void)
 
     spi_init();
     ili9341_init();
+
+#if RADAR_SETUP
+    tick_init();
+    sei();
+    radar_setup_run();                  /* never returns */
+#endif
+
     draw_static();
 
     tick_init();
