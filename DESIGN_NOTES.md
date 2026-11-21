@@ -83,11 +83,79 @@ Alternatives considered:
 
 ## Display: no framebuffer, partial redraw
 
-_TBD_
+A full frame is 320 × 240 × 2 B = 153,600 B. The ATmega328P has 2,048 B of
+SRAM, so a framebuffer is impossible, as is even a single 16-bit line
+buffer of any real height. Every primitive writes straight to the
+ILI9341's own frame memory through an address window (CASET/PASET +
+RAMWR [ILI9341 §8.2.20–8.2.22]). Erasing an object means drawing it again in
+the background color.
+
+Expected full-screen fill time at 4 MHz SPI:
+
+```
+SPI byte time   = 8 bits / 4 MHz = 2 us (32 CPU cycles)
++ loop/poll overhead               ~10-15 cycles per byte
+per pixel (2 B)                    ~90 cycles = 5.6 us
+76,800 px                          ~0.43 s
+```
+
+Milestone 1 measures this with Timer1 and prints it on the screen
+(measured: _pending hardware test_). This is why the radar view must
+redraw only what changed: a ping is 4×4 px and a label is about 30×8 px,
+which take well under 1 ms each.
+
+Text is drawn opaque: each 6×8 character cell is one address window with
+the background included. New text overwrites old text in place with no
+separate clear, and it's about 30× faster than plotting pixels one at a time.
+
+Font: a 5×7 font in printable ASCII, drawn by hand as ASCII art in
+`tools/font5x7.txt`. `tools/gen_font.py` converts it to column bytes
+(bit 0 = top row) in `src/font5x7.c`, 95 × 5 = 475 B of PROGMEM. The
+generated file is committed, so building doesn't need Python. A library
+font table was not used, to meet the "no copied library code" rule.
+
+## ILI9341 init sequence
+
+Kept to the minimum the datasheet requires:
+
+1. Hardware reset: RESX low ≥ 10 µs, then wait 120 ms (tRT) [§15.4].
+2. Software reset 0x01, wait 120 ms [§8.2.2]. This also gives a warm AVR
+   reset the same starting state.
+3. Sleep Out 0x11, wait 120 ms [§8.2.12].
+4. COLMOD 0x3A = 0x55, i.e. 16 bpp. The default 0x66 is 18 bpp and would
+   cost 3 bytes per pixel [§8.2.33].
+5. MADCTL 0x36 = MV | BGR (0x28): landscape, BGR filter [§8.2.29].
+6. Display ON 0x29 [§8.2.19].
+
+Power control, VCOM and gamma registers are left at the defaults the panel
+loads from NV memory at reset. Vendor init sequences set dozens of these
+registers, but copying one would break the "no copied library code" rule,
+and the datasheet doesn't require them. If the image looks washed out,
+those registers (§8.3) are the next thing to tune.
 
 ## SPI clock speeds
 
-_TBD_
+Both devices use SPI mode 0, MSB first: the ILI9341 samples on the rising SCL
+edge [§7.1.8], and the XPT2046 latches DIN on the rising edge and shifts DOUT
+on the falling edge.
+
+| Device | Divider | SCK | Limit |
+|---|---|---|---|
+| ILI9341 | fosc/4 (SPR=00, SPI2X=0) | 4 MHz | write cycle ≥ 100 ns, i.e. 10 MHz [ILI9341 §19.3.4]; capped at 4 MHz for the TXS0108E |
+| XPT2046 | fosc/16 (SPR=01, SPI2X=0) | 1 MHz | tCH, tCL ≥ 200 ns, i.e. 2.5 MHz [XPT2046 Table 9] |
+
+Dividers are from [M328P Table 19-5].
+
+The XPT2046's sample (acquisition) phase is 3 DCLK cycles. At 1 MHz that is
+3 µs, which gives the resistive panel more settling time than 2 MHz would.
+Touch reads are only a few bytes each, so the slower clock costs nothing
+noticeable.
+
+PB2 is both the display CS and the SPI SS pin. It is configured as an
+output before SPI is enabled, because an SS input pulled low would
+silently switch the SPI back to slave mode [M328P §19.3.2]. Touch CS (PD7)
+is driven high before any SPI traffic, so the XPT2046 never interprets
+display data as commands.
 
 ## Target smoothing
 
