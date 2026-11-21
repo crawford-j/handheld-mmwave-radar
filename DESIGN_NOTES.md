@@ -61,6 +61,15 @@ clock error and noise; the Uno's 16 MHz clock source has its own tolerance.
 **Normal speed mode (U2X0=0, UBRR=3) has more margin, so the one-time setup
 uses it instead of U2X with UBRR=7.**
 
+**Measured at 250000 (milestone 2, 2026-11-21):** 1000 frames received
+(30,000 bytes) with 0 framing errors, 0 bad tails, 0 USART overruns and
+0 ring-buffer drops. Frame rate read 11 Hz against the datasheet's
+nominal 10. So the −2.34% link works on this particular radar and board at
+room temperature. A clean run of 30,000 bytes only shows the byte error rate
+is below about 1×10⁻⁴ (95% bound, 3/30,000). It doesn't show any margin
+against temperature or supply drift in the Uno's clock, or against a
+different radar unit's oscillator.
+
 Chosen run-time baud: 38400 (radar index 0x0003).
 
 ```
