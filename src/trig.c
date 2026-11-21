@@ -36,3 +36,40 @@ uint16_t isqrt32(uint32_t n)
     }
     return (uint16_t)res;
 }
+
+/*
+ * sin_q15 - sin(deg) x 32767 for any whole-degree angle.
+ *
+ * Only 0..90 degrees are stored (91 x 2 B in flash). The rest follows from:
+ *   sin(-a)      = -sin(a)
+ *   sin(180 - a) =  sin(a)
+ */
+int16_t sin_q15(int16_t deg)
+{
+    deg %= 360;                         /* -359..359 */
+    if (deg > 180) {
+        deg -= 360;
+    } else if (deg < -180) {
+        deg += 360;
+    }                                   /* now -180..180 */
+
+    int8_t sign = 1;
+    if (deg < 0) {
+        deg = -deg;
+        sign = -1;
+    }                                   /* now 0..180 */
+    if (deg > 90) {
+        deg = 180 - deg;                /* 0..90 */
+    }
+
+    int16_t v = (int16_t)pgm_read_word(&sine_q15_table[deg]);
+    return sign > 0 ? v : (int16_t)-v;
+}
+
+/*
+ * cos_q15 - cos(deg) x 32767, using cos(a) = sin(90 - a).
+ */
+int16_t cos_q15(int16_t deg)
+{
+    return sin_q15(90 - deg);
+}
