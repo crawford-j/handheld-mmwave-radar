@@ -268,36 +268,87 @@ static void draw_label(int16_t x, int16_t y, const char *s, uint8_t in_flash, ui
 
 #if UI_SCAN_PULSE
 /*
- * arc_walk - the part of a circle of radius r around the apex that lies
- * inside the +/-60 degree cone (midpoint circle algorithm over the four
- * upper octants, keeping points with |dx|*100 <= dy*173). Each pixel is
- * colored `color`, or fn(x, y) if fn is set. Used to draw and erase the
- * pulse. Limiting it to the cone drops a third of the pixels (120 of 180
- * degrees), which matters: each lone pixel is a 13-byte window write.
+ * span - fill a 1-pixel-wide horizontal or vertical run (x0 <= x1,
+ * y0 <= y1) with `color`, or with fn(x, y) per pixel if fn is set, through
+ * a single address window. One window costs 11 bytes of commands; a lone
+ * pixel costs 13 bytes in total, so runs save most of that per pixel.
+ */
+static void span(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
+                 uint16_t color, gfx_color_fn fn)
+{
+    if (x0 < 0 || y0 < 0 || x1 >= LCD_WIDTH || y1 >= LCD_HEIGHT) {
+        return;
+    }
+    ili9341_set_window(x0, y0, x1, y1);
+    if (!fn) {
+        ili9341_push_color(color, (uint16_t)((x1 - x0 + 1) * (y1 - y0 + 1)));
+    } else {
+        for (int16_t yy = y0; yy <= y1; yy++) {
+            for (int16_t xx = x0; xx <= x1; xx++) {
+                ili9341_push_color(fn(xx, yy), 1);
+            }
+        }
+    }
+    ili9341_end();
+}
+
+/*
+ * arc_flush - draw the points of one midpoint-circle column x, for
+ * y = ya..yb, in the four upper octants:
+ *   top octants  (APEX_X +/- y, APEX_Y - x): one row  -> horizontal runs
+ *   side octants (APEX_X +/- x, APEX_Y - y): one column -> vertical runs,
+ *     clipped to the cone: x*100 <= y*173, i.e. y >= ceil(x*100/173)
+ * The top octants are within 45 degrees of straight up, so always inside
+ * the +/-60 degree cone.
+ */
+static void arc_flush(int16_t x, int16_t ya, int16_t yb, uint16_t color, gfx_color_fn fn)
+{
+    int16_t row = APEX_Y - x;
+    span(APEX_X + ya, row, APEX_X + yb, row, color, fn);
+    span(APEX_X - yb, row, APEX_X - ya, row, color, fn);
+
+    int16_t ymin = (int16_t)(((int32_t)x * COV_DY + COV_DX - 1) / COV_DX);
+    int16_t lo = (ya > ymin) ? ya : ymin;
+    if (lo <= yb) {
+        span(APEX_X + x, APEX_Y - yb, APEX_X + x, APEX_Y - lo, color, fn);
+        span(APEX_X - x, APEX_Y - yb, APEX_X - x, APEX_Y - lo, color, fn);
+    }
+}
+
+/*
+ * arc_walk - the part of a circle of radius r around the apex inside the
+ * +/-60 degree cone, by the midpoint circle algorithm. Consecutive points
+ * that share the same x (the algorithm's outer coordinate) are collected
+ * into runs and drawn by arc_flush(), instead of one window per pixel.
+ * Colors: `color`, or fn(x, y) per pixel if fn is set (used for erasing).
  */
 static void arc_walk(int16_t r, uint16_t color, gfx_color_fn fn)
 {
     int16_t x = r;
     int16_t y = 0;
     int16_t err = 1 - r;
+    int16_t y_run = 0;                  /* first y of the current x */
 
     while (x >= y) {
-        int16_t px[4] = { APEX_X + x, APEX_X - x, APEX_X + y, APEX_X - y };
-        int16_t py[4] = { APEX_Y - y, APEX_Y - y, APEX_Y - x, APEX_Y - x };
-        for (uint8_t k = 0; k < 4; k++) {
-            int16_t adx = px[k] - APEX_X;
-            if (adx < 0) adx = -adx;
-            if ((int32_t)adx * COV_DY <= (int32_t)(APEX_Y - py[k]) * COV_DX) {
-                ili9341_draw_pixel(px[k], py[k], fn ? fn(px[k], py[k]) : color);
-            }
-        }
-        y++;
+        /* Next midpoint step. */
+        int16_t nx = x;
+        int16_t ny = y + 1;
+        int16_t nerr;
         if (err < 0) {
-            err += 2 * y + 1;
+            nerr = err + 2 * ny + 1;
         } else {
-            x--;
-            err += 2 * (y - x) + 1;
+            nx = x - 1;
+            nerr = err + 2 * (ny - nx) + 1;
         }
+
+        /* x is about to change, or the octant ends: draw this x's run. */
+        if (nx != x || ny > nx) {
+            arc_flush(x, y_run, y, color, fn);
+            y_run = ny;
+        }
+        x = nx;
+        y = ny;
+        err = nerr;
     }
 }
 #endif
@@ -640,9 +691,10 @@ static void redraw_pings_near_arc(int16_t r_old, int16_t r_new)
 /*
  * ui_scan_step - advance the scan animation by one step.
  *
- * Pulse: the radius follows the clock. If it has moved, erase the old ring
- * by restoring the background under each of its pixels and draw the new
- * one. Each ring is ~(2/3)*pi*r pixels inside the cone, ~320 at the rim.
+ * Pulse: the radius follows the clock. If it has moved, draw the new ring,
+ * then erase the old one by restoring the background under its pixels.
+ * Each ring is ~(2/3)*pi*r pixels inside the cone (~320 at the rim), drawn
+ * as row/column runs rather than single pixels.
  *
  * Sweep: erase/redraw a line from the apex, bouncing within the cone.
  */
@@ -657,12 +709,14 @@ void ui_scan_step(uint32_t now)
     if (r == pulse_r) {
         return;
     }
+    /* New ring first, then erase the old one, so a ring is always on screen
+     * (erasing first made the outer part blink out on every step). */
     int16_t old_r = pulse_r;
+    pulse_r = r;
+    arc_walk(pulse_r, C_PULSE, 0);
     if (old_r) {
         arc_walk(old_r, 0, bg_color_at);
     }
-    pulse_r = r;
-    arc_walk(pulse_r, C_PULSE, 0);
     redraw_pings_near_arc(old_r, pulse_r);
 #else
     (void)now;
@@ -746,7 +800,7 @@ void ui_debug_target(void)
 /*
  * ui_status - debug line at the top: frame count, errors, frame rate and
  * the longest animation tick (scan + glide) since the last refresh, in ms;
- * red when it overran the 40 ms tick.
+ * red when it overran the 30 ms tick.
  */
 void ui_status(const radar_stats_t *s, uint16_t hz, uint16_t draw_ms)
 {
@@ -761,6 +815,6 @@ void ui_status(const radar_stats_t *s, uint16_t hz, uint16_t draw_ms)
                     C_BG, 1);
     x = gfx_int_pad(x, 2, hz, 4, COLOR_WHITE, C_BG, 1);
     x = gfx_text_P(x, 2, PSTR("HZ"), C_STATUS, C_BG, 1);
-    x = gfx_int_pad(x, 2, draw_ms, 4, draw_ms > 40 ? COLOR_RED : COLOR_WHITE, C_BG, 1);
+    x = gfx_int_pad(x, 2, draw_ms, 4, draw_ms > 30 ? COLOR_RED : COLOR_WHITE, C_BG, 1);
     gfx_text_P(x, 2, PSTR("MS"), C_STATUS, C_BG, 1);
 }
