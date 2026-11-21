@@ -39,8 +39,19 @@ typedef struct {
     uint16_t ovf;           /* ring buffer full, byte dropped        */
 } radar_stats_t;
 
+/* Command words [LD2450 §2.2] */
+#define RADAR_CMD_ENABLE_CFG  0x00FF   /* value 0x0001       [§2.2.1] */
+#define RADAR_CMD_END_CFG     0x00FE   /* no value           [§2.2.2] */
+#define RADAR_CMD_SET_BAUD    0x00A1   /* value: baud index  [§2.2.7] */
+#define RADAR_CMD_RESTART     0x00A3   /* no value           [§2.2.9] */
+#define RADAR_ACK_BIT         0x0100   /* ACK word = cmd | 0x0100     */
+#define RADAR_BAUD_IDX_38400  0x0003   /* [LD2450 Table 6]            */
+
 void    radar_init(void);
+void    radar_set_baud(uint32_t baud);
 uint8_t radar_poll(radar_frame_t *out);
 void    radar_get_stats(radar_stats_t *out);
+void    radar_send_cmd(uint16_t cmd, const uint8_t *value, uint8_t vlen);
+uint8_t radar_get_ack(uint16_t *cmd, uint16_t *status);
 
 #endif /* UART_RADAR_H */
