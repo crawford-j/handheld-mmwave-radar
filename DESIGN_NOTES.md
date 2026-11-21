@@ -99,8 +99,17 @@ per pixel (2 B)                    ~90 cycles = 5.6 us
 76,800 px                          ~0.43 s
 ```
 
-Milestone 1 measures this with Timer1 and prints it on the screen
-(measured: _pending hardware test_). This is why the radar view must
+Milestone 1 measures this with Timer1 and prints it on the screen.
+**Measured: 537 ms**, about 25% over the estimate:
+
+```
+537 ms / 153,600 B = 3.5 us per byte = 56 cycles
+SPI shift = 32 cycles, so call + SPIF polling + 32-bit loop counter ~ 24 cycles
+```
+
+An unrolled loop that loads SPDR as soon as SPIF sets could get close to the
+2 us/byte floor (~0.31 s). That isn't worth doing, because the radar view
+never fills the whole screen during normal operation. This is why the radar view must
 redraw only what changed: a ping is 4×4 px and a label is about 30×8 px,
 which take well under 1 ms each.
 
