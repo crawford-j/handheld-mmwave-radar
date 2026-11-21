@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.pdf binary
+*.atsln text eol=crlf
+*.cproj text eol=crlf
