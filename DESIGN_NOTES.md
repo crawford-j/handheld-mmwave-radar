@@ -348,6 +348,29 @@ runs linearly from 800 ms at R down to 100 ms at 1.0 m:
 `BUZZER_SOLID` mode just keeps OC2B connected. Leaving solid mode restarts
 the beep cycle, so the change is audible straight away.
 
+### False triggers during setup
+
+While the device was being set up, the alarm sometimes went off with the
+user right next to it (< 0.3 m), past the 0.5 m gate. The radar can't tell
+front from back: anything it picks up, including reflections off the person
+next to it, comes back as a target in front with a positive Y. So the
+firmware has nothing that marks a reading as coming from behind. The
+aluminum back plate blocks most of the back lobe. The remaining false
+targets are short-lived close-range ghosts. Three countermeasures, all
+`#define`s:
+
+| Measure | Rule | Constant |
+|---|---|---|
+| Stricter close-range confirm | new targets under 1.0 m need 5 frames in a row (~0.45 s) instead of 2 before they're shown | `CONFIRM_NEAR_FRAMES`, `NEAR_MM` (track.c) |
+| Entry debounce | the nearest target must be inside R for 4 frames in a row (~0.36 s) before the alarm starts | `ALERT_ENTER_FRAMES` |
+| Arming delay | no alarm for the first 5 s after power-up; the status line shows ARMING | `ALERT_ARM_MS` |
+
+A target already confirmed farther out stays shown as it walks in, so real
+approaches are not delayed by the close-range rule. Not used yet: the
+LD2450's own region filter (command 0x00C2, persistent in the radar). It
+could block a fixed rectangle in front of the antenna, if the ghosts turn
+out to cluster in one place.
+
 ## Buzzer tone (Timer2)
 
 A passive buzzer needs an AC drive at audio frequency. Timer2 makes it in
