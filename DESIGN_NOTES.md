@@ -80,8 +80,18 @@ were confirmed at 38400.
 0 overruns and 0 drops, the same as at 250000. However, the frame rate read
 **6 Hz**, versus 11 Hz at 250000. All AVR-side counters are zero, so no
 frames are being lost on the AVR side. The radar itself is sending fewer
-frames. _Under investigation:_ check whether the rate depends on targets
-being present, or on the radar's baud setting.
+frames. A hand test of pointing the radar at a seated person and panning,
+then pointing it at an empty wall, showed 6 Hz both ways, so the rate does
+not depend on targets being present.
+
+**Switched to 57600 (2026-11-21)** with `RADAR_SETUP_BAUD=57600`
+(U2X0 = 1, UBRR0 = 34, −0.79%). The setup program measures the frame rate
+over 3 s before and after the switch: **5 Hz at 38400 and 5 Hz at 57600.**
+So between 38400 and 57600 the frame rate doesn't depend on the baud
+rate, yet it was 11 Hz at the factory 256000. That leaves two explanations:
+either the radar's firmware only sends at full rate at its native baud,
+or something else changed when the radar was first reconfigured and
+restarted. _Next test:_ restore 256000 and see whether 11 Hz comes back.
 
 ```
 U2X0=0, UBRR=25 -> 16e6/(16*26) = 38461.5   error = +0.16%   [Table 20-7]
