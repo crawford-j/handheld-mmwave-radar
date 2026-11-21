@@ -9,7 +9,9 @@
  *   38400: +0.16 % on the AVR side (normal speed, UBRR 25). Used first, but
  *          the radar only sent about 6 frames/s at this rate.
  *   57600: -0.79 % (double speed, UBRR 34), inside the +/-1.5 % recommended
- *          for U2X mode [M328P Table 20-3].
+ *          for U2X mode [M328P Table 20-3]. Also about 5 frames/s.
+ *  256000: back to the factory rate (AVR at 250000, -2.34 %), to test
+ *          whether the ~11 frames/s seen at first comes back.
  *
  * Sequence (each command waits for its ACK, up to 3 tries) [LD2450 §2.4]:
  *   1. Find the radar: listen for valid data frames at each candidate rate
@@ -40,12 +42,19 @@
 #ifndef RADAR_SETUP_BAUD
 #define RADAR_SETUP_BAUD 38400UL
 #endif
+/* SETUP_AVR_BAUD is the rate the AVR uses to talk to the radar afterwards:
+ * 256000 can't be made from 16 MHz, so the AVR uses 250000 (-2.34 %). */
 #if RADAR_SETUP_BAUD == 38400UL
 #define SETUP_BAUD_IDX 0x0003
+#define SETUP_AVR_BAUD 38400UL
 #elif RADAR_SETUP_BAUD == 57600UL
 #define SETUP_BAUD_IDX 0x0004
+#define SETUP_AVR_BAUD 57600UL
+#elif RADAR_SETUP_BAUD == 256000UL
+#define SETUP_BAUD_IDX 0x0007          /* factory default */
+#define SETUP_AVR_BAUD 250000UL
 #else
-#error "RADAR_SETUP_BAUD must be 38400 or 57600"
+#error "RADAR_SETUP_BAUD must be 38400, 57600 or 256000"
 #endif
 
 #define FIND_LISTEN_MS   1500   /* listen time per rate while searching   */
@@ -200,7 +209,7 @@ void radar_setup_run(void)
     gfx_text_P(4, 220, PSTR("                      "), COLOR_GRAY, COLOR_BLACK, 1);
     log_baud(x, found, COLOR_GREEN);
 
-    if (found == RADAR_SETUP_BAUD) {
+    if (found == SETUP_AVR_BAUD) {
         log_line(PSTR("ALREADY SET"), COLOR_GREEN);
         measure_rate(found);
         halt(PSTR("NOTHING TO DO"), COLOR_GREEN);
@@ -234,12 +243,12 @@ void radar_setup_run(void)
     /* 5. Confirm at the new rate, then measure its frame rate. */
     x = log_line(PSTR("CHECK "), COLOR_WHITE);
     x = log_baud(x, RADAR_SETUP_BAUD, COLOR_WHITE);
-    ok = (count_frames(RADAR_SETUP_BAUD, CHECK_MS, FIND_FRAMES) >= FIND_FRAMES);
+    ok = (count_frames(SETUP_AVR_BAUD, CHECK_MS, FIND_FRAMES) >= FIND_FRAMES);
     log_result(x, ok);
     if (!ok) {
         halt(PSTR("NO DATA AT NEW RATE"), COLOR_RED);
     }
-    measure_rate(RADAR_SETUP_BAUD);
+    measure_rate(SETUP_AVR_BAUD);
 
     halt(PSTR("DONE"), COLOR_GREEN);
 }
