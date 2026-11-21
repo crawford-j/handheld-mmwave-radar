@@ -71,20 +71,45 @@ static uint8_t       ack_buf[ACK_KEEP];
 static uint8_t  ack_ready;                      /* a complete ACK is waiting */
 static uint16_t ack_cmd, ack_status;
 
+/* U2X0 setting chosen by radar_set_baud(), reused when UCSR0A is rewritten. */
+static uint8_t u2x_bit;
+
+/*
+ * abs_diff - |a - b| for unsigned values.
+ */
+static uint32_t abs_diff(uint32_t a, uint32_t b)
+{
+    return (a > b) ? (a - b) : (b - a);
+}
+
 /*
  * radar_set_baud - (re)program USART0 for `baud`, 8N1, RX interrupt on, and
  * discard anything already received.
  *
- * Normal speed mode (U2X0 = 0) [M328P §20.3 Table 20-1]:
- *   UBRR0 = F_CPU / (16 * baud) - 1, rounded to nearest
- *   250000: 16e6 / (16 * 250000) - 1 = 3     -> exactly 250000 (-2.34 % vs 256000)
- *   38400:  16e6 / (16 * 38400)  - 1 = 25.04 -> 25 -> 38461.5 (+0.16 %)
- * U2X0 = 0 because 16x oversampling tolerates more baud error than 8x:
+ * Both speed modes are computed and the one closer to `baud` is used
+ * [M328P §20.3 Table 20-1]:
+ *   normal (U2X0 = 0): UBRR0 = F_CPU / (16 * baud) - 1
+ *   double (U2X0 = 1): UBRR0 = F_CPU / (8 * baud)  - 1
+ * Normal mode wins ties: 16x oversampling tolerates more error than 8x,
  * +/-2.0 % recommended vs +/-1.5 % [M328P Tables 20-2, 20-3].
+ *   250000: normal UBRR 3  -> 250000   (-2.34 % vs the radar's 256000)
+ *   38400:  normal UBRR 25 -> 38461.5  (+0.16 %), same in double mode
+ *   57600:  normal UBRR 16 -> 58823.5  (+2.12 %)
+ *           double UBRR 34 -> 57142.9  (-0.79 %)  <- chosen
  */
 void radar_set_baud(uint32_t baud)
 {
-    uint16_t ubrr = (uint16_t)((F_CPU + 8UL * baud) / (16UL * baud) - 1UL);
+    uint16_t u16 = (uint16_t)((F_CPU + 8UL * baud) / (16UL * baud) - 1UL);
+    uint16_t u8  = (uint16_t)((F_CPU + 4UL * baud) / (8UL * baud) - 1UL);
+    uint32_t e16 = abs_diff(F_CPU / (16UL * (u16 + 1UL)), baud);
+    uint32_t e8  = abs_diff(F_CPU / (8UL * (u8 + 1UL)), baud);
+
+    uint16_t ubrr = u16;
+    u2x_bit = 0;
+    if (e8 < e16) {
+        ubrr = u8;
+        u2x_bit = (1 << U2X0);
+    }
 
     /* Turn the USART off while the rate changes. */
     UCSR0B = 0;
@@ -92,9 +117,9 @@ void radar_set_baud(uint32_t baud)
     UBRR0H = (uint8_t)(ubrr >> 8);
     UBRR0L = (uint8_t)(ubrr & 0xFF);
 
-    /* U2X0 = 0 (normal speed), MPCM0 = 0. Writing TXC0 = 1 clears the
+    /* U2X0 as chosen above, MPCM0 = 0. Writing TXC0 = 1 clears the
      * transmit-complete flag [M328P §20.11.2]. */
-    UCSR0A = (1 << TXC0);
+    UCSR0A = (1 << TXC0) | u2x_bit;
 
     /* UMSEL01:0 = 00 async, UPM01:0 = 00 no parity, USBS0 = 0 one stop bit,
      * UCSZ01:0 = 11 (UCSZ02 = 0 in UCSR0B) -> 8 data bits [M328P §20.11.4]. */
@@ -173,7 +198,7 @@ void radar_send_cmd(uint16_t cmd, const uint8_t *value, uint8_t vlen)
 {
     uint16_t len = 2 + vlen;
 
-    UCSR0A = (1 << TXC0);               /* clear transmit-complete flag */
+    UCSR0A = (1 << TXC0) | u2x_bit;     /* clear TXC0, keep the speed mode */
 
     for (uint8_t i = 0; i < sizeof(ACK_HDR); i++) {
         tx_byte(ACK_HDR[i]);            /* command header = same 4 bytes */
