@@ -160,8 +160,37 @@ void ili9341_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
  * ili9341_push_color - send the same RGB565 color `count` times into the
  * window opened by ili9341_set_window(). High byte first [ILI9341 §7.6.2].
  */
+/* Software brightness, 0..255 (255 = full). The backlight is hard-wired to
+ * 5 V, so dimming is done by scaling every color before it is sent. */
+static uint8_t brightness = 255;
+
+/*
+ * ili9341_set_brightness - scale all colors sent from now on by level/256
+ * (255 = unchanged). Takes effect for new drawing only; redraw to apply.
+ */
+void ili9341_set_brightness(uint8_t level)
+{
+    brightness = level;
+}
+
+/*
+ * dim - scale an RGB565 color by brightness/256, channel by channel
+ * (5-bit red, 6-bit green, 5-bit blue).
+ */
+static uint16_t dim(uint16_t c)
+{
+    if (brightness == 255) {
+        return c;
+    }
+    uint16_t r = ((c >> 11) * brightness) >> 8;
+    uint16_t g = (((c >> 5) & 0x3F) * brightness) >> 8;
+    uint16_t b = ((c & 0x1F) * brightness) >> 8;
+    return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
 void ili9341_push_color(uint16_t color, uint32_t count)
 {
+    color = dim(color);
     uint8_t hi = color >> 8;
     uint8_t lo = color & 0xFF;
 
