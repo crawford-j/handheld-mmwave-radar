@@ -103,6 +103,24 @@ make up for the lower rate, the display interpolates each ping toward its
 new position between frames (milestone 4). The 256000 retest is left as
 optional extra data for the report.
 
+**Revisited after milestone 3 (2026-11-21).** On hardware, the 5 Hz updates
+felt laggy when panning the handheld device. Turning swings the whole scene
+past the radar, so 200 ms steps show much more than they do for a walking
+person. The radar was set back to its factory rate with
+`RADAR_SETUP_BAUD=256000` (index 0x0007). The setup program measured
+**5 Hz at 57600, then 11 Hz at 256000**, and all commands were ACKed.
+
+| Radar baud | AVR baud (error) | Frame rate |
+|---|---|---|
+| 256000 | 250000 (−2.34%) | 11 Hz |
+| 57600 | 57143 (−0.79%) | 5 Hz |
+| 38400 | 38462 (+0.16%) | 5–6 Hz |
+
+The LD2450 only sends at its full rate at the factory baud. This isn't
+documented in the protocol V1.03, which just says "10 frames per second".
+The firmware now runs the link at 250000 and relies on the measured
+zero-error result plus the parser rejecting bad frames.
+
 ```
 U2X0=0, UBRR=25 -> 16e6/(16*26) = 38461.5   error = +0.16%   [Table 20-7]
 U2X0=1, UBRR=51 -> 16e6/(8*52)  = 38461.5   error = +0.16%
