@@ -8,22 +8,23 @@
  * stands right at the edge and the reading wobbles by a few cm:
  *   off -> on  when nearest < R
  *   on  -> off when nearest > R + ALERT_HYST_MM, or no target is left
- * With R = 1.5 m: turns on inside 1.50 m, turns off beyond 1.75 m.
+ * With R = 2.0 m: turns on inside 2.00 m, turns off beyond 2.25 m.
  * 250 mm is several times the filtered position noise (~50 mm std on a
  * still target, see DESIGN_NOTES), so the edge cannot flip it back and forth.
  *
  * Beep rate: linear in distance, from BEEP_FAR_MS at the zone edge down to
- * BEEP_NEAR_MS at the 0.5 m minimum range:
- *   period = NEAR + (d - 500) * (FAR - NEAR) / (R - 500), clamped
- * While the alert holds in the hysteresis band (R..R+H) it beeps at the
- * slowest rate.
+ * BEEP_NEAR_MS at ALERT_SOLID_MM (1.0 m):
+ *   period = NEAR + (d - SOLID) * (FAR - NEAR) / (R - SOLID), clamped
+ * Closer than ALERT_SOLID_MM the buzzer holds one continuous tone. While
+ * the alert holds in the hysteresis band (R..R+H) it beeps at the slowest
+ * rate.
  */
 
 #include "track.h"
 #include "buzzer.h"
 #include "alert.h"
 
-#define BEEP_NEAR_MS  100       /* period at 0.5 m           */
+#define BEEP_NEAR_MS  100       /* period at ALERT_SOLID_MM  */
 #define BEEP_FAR_MS   800       /* period at the zone edge   */
 
 static uint16_t radius_mm = ALERT_RADIUS_DEFAULT_MM;
@@ -72,15 +73,15 @@ uint16_t alert_nearest_mm(void)
  */
 static uint16_t beep_period(uint16_t d)
 {
-    if (d <= MIN_RANGE_MM || radius_mm <= MIN_RANGE_MM) {
-        return BEEP_NEAR_MS;
+    if (d < ALERT_SOLID_MM) {
+        return BUZZER_SOLID;
     }
-    if (d >= radius_mm) {
+    if (d >= radius_mm || radius_mm <= ALERT_SOLID_MM) {
         return BEEP_FAR_MS;
     }
     return BEEP_NEAR_MS +
-           (uint16_t)(((uint32_t)(d - MIN_RANGE_MM) * (BEEP_FAR_MS - BEEP_NEAR_MS))
-                      / (radius_mm - MIN_RANGE_MM));
+           (uint16_t)(((uint32_t)(d - ALERT_SOLID_MM) * (BEEP_FAR_MS - BEEP_NEAR_MS))
+                      / (radius_mm - ALERT_SOLID_MM));
 }
 
 /*
