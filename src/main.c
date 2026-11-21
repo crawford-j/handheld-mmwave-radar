@@ -35,7 +35,7 @@
 #include "radar_setup.h"
 #endif
 
-#define FRAME_TICK_MS   40      /* scan step + ping glide */
+#define FRAME_TICK_MS   30      /* scan step + ping glide, ~33 per second */
 #define STATUS_MS       500     /* debug line refresh                          */
 #define DEBUG_MS        200     /* raw vs filtered readout refresh             */
 #define RATE_WINDOW_MS  1000    /* frame-rate measurement window               */
