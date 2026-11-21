@@ -342,4 +342,37 @@ _TBD_
 
 ## Things that didn't work
 
-_None yet._
+### Radar mounted landscape (fixed 2026-11-21)
+
+The LD2450 was first taped to the back plate with its long side
+horizontal. Distance (Y) tracked well, but sideways movement didn't. With a
+large RAW X readout on screen, walking side to side about 2 m in front showed
+RAW X hovering around −300 mm and fluctuating randomly, instead of sweeping
+roughly ±1000 mm.
+
+Cause: the module measures azimuth across its **short** side. The manual's
+Figure 6 ("Radar wall mounting angle identification", §7, p. 14) shows the
+module standing vertically, marked Up/Down, with the positive/negative angle
+arrows pointing left/right. Mounted landscape, it was measuring elevation
+instead of azimuth.
+
+Fix: the module was rotated 90° on the plate (long side vertical, antenna
+still facing out the back). No firmware change; `RADAR_X_SIGN` handles
+the left/right sign if the module ends up upside down.
+
+Related notes from the same manual (§7.1, p. 15):
+- A metal back plate is recommended to shield the radar's back lobe. The
+  aluminum plate already does this.
+- "The shaking of the radar itself will affect the detection effect." The
+  LD2450 is designed for a fixed wall mount, so handheld use is inherently
+  noisier. This is a known limitation of the design and part of the reason
+  for the tracking filter.
+
+### Testing on dogs
+
+Early tracking tests used the family dogs. They're small, low (near the
+bottom of the ±35° elevation cone when the device is held at chest height)
+and erratic, and they gave intermittent, jumpy readings. The manufacturer
+characterizes the radar with a 1.75 m adult [manual §7, Fig. 7]. Later tests
+were done on a person, with the device propped on a chair and the screen
+filmed from behind.
