@@ -49,13 +49,15 @@ void gfx_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
 }
 
 /*
- * gfx_line - line from (x0,y0) to (x1,y1) using Bresenham's algorithm.
+ * line_walk - line from (x0,y0) to (x1,y1) using Bresenham's algorithm.
+ * Each pixel gets `color`, or fn(x, y) if fn is not NULL.
  *
  * Integer only: err tracks the distance between the true line and the pixel
  * grid. Each step moves in x, y, or both depending on the sign of 2*err.
  * Works in all octants because sx/sy carry the direction and dy is negated.
  */
-void gfx_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color)
+static void line_walk(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
+                      uint16_t color, gfx_color_fn fn)
 {
     int16_t dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
     int16_t dy = (y1 > y0) ? (y0 - y1) : (y1 - y0);   /* -|dy| */
@@ -64,7 +66,7 @@ void gfx_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color)
     int16_t err = dx + dy;
 
     for (;;) {
-        ili9341_draw_pixel(x0, y0, color);
+        ili9341_draw_pixel(x0, y0, fn ? fn(x0, y0) : color);
         if (x0 == x1 && y0 == y1) {
             break;
         }
@@ -78,6 +80,23 @@ void gfx_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color)
             y0 += sy;
         }
     }
+}
+
+/*
+ * gfx_line - solid line from (x0,y0) to (x1,y1).
+ */
+void gfx_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color)
+{
+    line_walk(x0, y0, x1, y1, color, 0);
+}
+
+/*
+ * gfx_line_fn - line whose pixel colors come from fn(x, y). Used to erase a
+ * line by restoring whatever background belongs under each pixel.
+ */
+void gfx_line_fn(int16_t x0, int16_t y0, int16_t x1, int16_t y1, gfx_color_fn fn)
+{
+    line_walk(x0, y0, x1, y1, 0, fn);
 }
 
 /*

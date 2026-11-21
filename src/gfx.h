@@ -14,7 +14,11 @@ void gfx_fill_screen(uint16_t color);
 void gfx_hline(int16_t x, int16_t y, int16_t w, uint16_t color);
 void gfx_vline(int16_t x, int16_t y, int16_t h, uint16_t color);
 void gfx_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
+/* Per-pixel color source, e.g. "what background belongs at (x, y)". */
+typedef uint16_t (*gfx_color_fn)(int16_t x, int16_t y);
+
 void gfx_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
+void gfx_line_fn(int16_t x0, int16_t y0, int16_t x1, int16_t y1, gfx_color_fn fn);
 void gfx_circle(int16_t cx, int16_t cy, int16_t r, uint16_t color);
 void gfx_fill_circle(int16_t cx, int16_t cy, int16_t r, uint16_t color);
 
