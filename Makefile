@@ -15,11 +15,13 @@ SIZE    := avr-size
 
 # Radar link speed: 250000 (factory radar) or 38400 (after baud switch)
 RADAR_BAUD ?= 38400UL
-# 1 = build the one-time radar baud switch (256000 -> 38400) instead
+# 1 = build the one-time radar baud switch instead, to RADAR_SETUP_BAUD
 RADAR_SETUP ?= 0
+RADAR_SETUP_BAUD ?= 38400UL
 
 CFLAGS  := -mmcu=$(MCU) -DF_CPU=$(F_CPU) -DRADAR_BAUD=$(RADAR_BAUD) \
-           -DRADAR_SETUP=$(RADAR_SETUP) -Os -std=gnu11 \
+           -DRADAR_SETUP=$(RADAR_SETUP) -DRADAR_SETUP_BAUD=$(RADAR_SETUP_BAUD) \
+           -Os -std=gnu11 \
            -Wall -Wextra -ffunction-sections -fdata-sections -MMD -MP
 LDFLAGS := -mmcu=$(MCU) -Wl,--gc-sections
 
