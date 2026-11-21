@@ -3,6 +3,10 @@
  *
  * Target: ATmega328P @ 16 MHz (Arduino Uno R3), avr-gcc, no Arduino core.
  *
+ * Milestone 5: alert zone. The nearest confirmed target inside the alert
+ * radius sets off the buzzer (Timer2 tone on D3), beeping faster as it
+ * gets closer, with hysteresis at the edge (alert.c, buzzer.c).
+ *
  * Milestone 4: smoothing and direction arrows. Radar frames go through
  * track.c (range gate, confirm/hold, adaptive EMA, motion history); the
  * radar view glides each ping toward its filtered position and draws an
@@ -18,6 +22,8 @@
 #include "tick.h"
 #include "uart_radar.h"
 #include "track.h"
+#include "alert.h"
+#include "buzzer.h"
 #include "ui.h"
 
 /* `make RADAR_SETUP=1` builds the one-time radar baud switch instead of the
@@ -61,6 +67,7 @@ int main(void)
 
     tick_init();
     radar_init();
+    buzzer_init();
     sei();                              /* enable interrupts (tick + USART RX) */
 
     uint32_t last_tick   = 0;
@@ -82,7 +89,10 @@ int main(void)
         }
         if (have_new) {
             ui_set_targets();
+            ui_alert_status(alert_update());
         }
+
+        buzzer_service(now);            /* beep on/off timing */
 
         if ((now - last_tick) >= FRAME_TICK_MS) {
             last_tick = now;
