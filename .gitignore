@@ -19,3 +19,6 @@ Release/
 .vs/
 *.atsuo
 *.cproj.user
+
+# Datasheets (copyrighted, see docs/datasheets/README.md)
+docs/datasheets/*.pdf
