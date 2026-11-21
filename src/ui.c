@@ -1,22 +1,31 @@
 /*
  * ui.c - Radar view on the 320x240 landscape display.
  *
- * Layout: a 120-degree fan (+/-60 deg, the LD2450's azimuth coverage
- * [LD2450 manual §2.1]) with its apex at the bottom center of the screen.
- *   apex (160, 230), radius 180 px = 6 m (the radar's maximum range)
- *   scale: 6000 mm / 180 px = 33.3 mm per pixel
- *   fan edges end at 180*sin60 = 156 px left/right and 180*cos60 = 90 px up,
- *   so the fan spans x = 4..316, y = 50..230 and just fits the screen.
+ * Layout: a filled half-dome with its apex at the bottom center.
+ *   apex (160, 200), radius 156 px = 6 m (the radar's maximum range)
+ *   scale: 6000 mm / 156 px = 38.5 mm per pixel
+ *   the dome spans x = 4..316, y = 44..200
+ * The LD2450 only sees +/-60 degrees [LD2450 manual §2.1, Fig. 6], so the
+ * dome is drawn brighter inside that cone and dark outside it.
+ *   top bar    y = 0..42   debug status and readout
+ *   dome       y = 44..200
+ *   baseline   y = 203..210 range labels
+ *   y = 213..228           big range text ("6M")
+ *   y = 231..238           alert zone / ALERT line
  *
- * No framebuffer: the static background (rings, edges, center line) is never
- * stored. bg_color_at(x, y) computes what belongs at any pixel, and is used
- * both to draw the background and to repair it after a ping, label, arrow or
- * sweep line moves. Drawing and repairing use the same function, so a repair
- * never leaves stray pixels.
+ * No framebuffer: the background is never stored. bg_color_at(x, y)
+ * computes what belongs at any pixel (gradient fill, rings, edges, alert
+ * ring) and is used both to draw the dome and to repair it after a ping,
+ * label, arrow or the pulse moves. Drawing and repairing use the same
+ * function, so a repair never leaves stray pixels.
  *
- * Pings glide: each target has a goal (from track.c, updated ~11x/s) and a
- * drawn position that moves halfway to the goal on every animation tick
- * (40 ms), so the dots slide instead of jumping between radar frames.
+ * Scan animation (UI_SCAN_PULSE, default 1): a ring expanding from the apex
+ * to the edge, like a sonar pulse. With UI_SCAN_PULSE = 0 a sweep line
+ * bounces across the +/-60 degree cone instead.
+ *
+ * Pings glide: each target has a goal (from track.c, ~11 updates/s) and a
+ * drawn position that moves halfway to the goal on every animation tick, so
+ * dots slide instead of jumping between radar frames.
  */
 
 #include <avr/pgmspace.h>
@@ -30,94 +39,111 @@
 
 /* ---- Geometry ---- */
 #define APEX_X      160
-#define APEX_Y      230
-#define R_PX        180             /* outer ring radius in pixels */
-#define RANGE_MM    6000L           /* distance at the outer ring  */
-#define EDGE_DX     156             /* fan edge end: 180 * sin(60) */
-#define EDGE_DY     90              /* fan edge end: 180 * cos(60) */
+#define APEX_Y      200
+#define R_PX        156             /* dome radius in pixels = RANGE_MM */
+#define RANGE_MM    6000L
+#define COV_DX      173             /* cone edge direction: tan(60) = 173/100 */
+#define COV_DY      100
 
-#define SWEEP_MAX   58              /* sweep turns back 2 deg inside the edges */
-#define SWEEP_STEP  2               /* degrees per step                        */
-#define SWEEP_R     (R_PX - 2)
+#define N_RINGS     3
+static const uint8_t ring_px[N_RINGS] PROGMEM = { 39, 78, 117 };   /* 1.5, 3, 4.5 m */
+static const char lbl0[] PROGMEM = "1.5";
+static const char lbl1[] PROGMEM = "3";
+static const char lbl2[] PROGMEM = "4.5";
+static const char lbl3[] PROGMEM = "6";
+static const char *const range_lbl[N_RINGS + 1] PROGMEM = { lbl0, lbl1, lbl2, lbl3 };
 
-#define N_RINGS     4
-static const uint8_t ring_px[N_RINGS] PROGMEM = { 45, 90, 135, 180 };  /* 1.5 m steps */
-static const char ring_lbl0[] PROGMEM = "1.5m";
-static const char ring_lbl1[] PROGMEM = "3m";
-static const char ring_lbl2[] PROGMEM = "4.5m";
-static const char ring_lbl3[] PROGMEM = "6m";
-static const char *const ring_lbl[N_RINGS] PROGMEM = { ring_lbl0, ring_lbl1, ring_lbl2, ring_lbl3 };
+/* Pulse: grows PULSE_STEP px per animation tick from PULSE_MIN to the edge. */
+#define PULSE_MIN   6
+#define PULSE_STEP  3
 
-/* Ring label i: top-left just above its ring, right of the center line. */
-#define RING_LBL_X        (APEX_X + 3)
-#define RING_LBL_Y(r)     (APEX_Y - (r) - GFX_CHAR_H - 1)
-#define RING_LBL_W        (4 * GFX_CHAR_W)      /* longest label, "4.5m" */
+/* Sweep (UI_SCAN_PULSE = 0): bounces inside the cone. */
+#define SWEEP_MAX   58
+#define SWEEP_STEP  2
+#define SWEEP_R     (R_PX - 3)
 
 /* ---- Colors ---- */
+#define GREEN6(g)   ((uint16_t)((g) & 0x3F) << 5)   /* RGB565 with only green set */
 #define C_BG        COLOR_BLACK
-#define C_RING      RGB565(0, 110, 0)
-#define C_OUTER     RGB565(0, 200, 0)
-#define C_EDGE      RGB565(0, 110, 0)
-#define C_CENTER    RGB565(0, 50, 0)
-#define C_SWEEP     RGB565(80, 255, 80)
-#define C_LABEL     RGB565(0, 160, 0)
+#define C_EDGE      RGB565(80, 255, 80)     /* bright outer rim               */
+#define C_RING      RGB565(60, 200, 60)     /* dotted range rings             */
+#define C_LINE      RGB565(120, 230, 120)   /* dashed baseline / center line  */
+#define C_CONE      RGB565(40, 140, 40)     /* +/-60 degree coverage edges    */
+#define C_ALERT     RGB565(230, 30, 30)     /* alert-zone ring                */
+#define C_PULSE     RGB565(200, 255, 200)
+#define C_SWEEP     RGB565(160, 255, 160)
+#define C_TEXT      RGB565(150, 230, 150)
 #define C_STATUS    COLOR_GRAY
-#define C_ALERT     RGB565(200, 0, 0)    /* alert-zone ring */
+#define C_PING      RGB565(190, 255, 190)
+#define C_PING_HALO RGB565(60, 170, 60)
+#define C_PING_HOT  RGB565(255, 70, 70)     /* inside the alert zone */
+#define C_LABEL     COLOR_WHITE
 
-static const uint16_t ping_color[RADAR_TARGETS] = { COLOR_YELLOW, COLOR_CYAN, COLOR_MAGENTA };
-
-#define PING_HALF   2               /* ping is a 5x5 square            */
-#define LABEL_MAX   6               /* "6.0m" + spare                  */
-#define ARROW_LEN   14              /* arrow length, px                */
-#define ARROW_BACK  5               /* head: back from the tip, px     */
-#define ARROW_WIDE  3               /* head: half-width, px            */
+#define PING_R      3               /* dot radius             */
+#define HALO_R      5               /* glow ring radius       */
+#define LABEL_MAX   6               /* "6.0m" + spare         */
+#define LABEL_GAP   2               /* px between dot and label */
+#define ARROW_LEN   14
+#define ARROW_BACK  5
+#define ARROW_WIDE  3
 
 /* What is drawn (or should be drawn) for one target. */
 typedef struct {
-    uint8_t on;                     /* visible                           */
-    int16_t px, py;                 /* ping center                       */
-    int16_t lx, ly;                 /* label top-left                    */
-    uint8_t len;                    /* label length (chars)              */
-    char    text[LABEL_MAX + 1];
-    uint8_t arrow;                  /* arrow visible                     */
-    int16_t ax, ay;                 /* arrow tip                         */
-    int16_t h1x, h1y, h2x, h2y;     /* arrow head ends                   */
+    uint8_t  on;
+    int16_t  px, py;                /* dot center               */
+    uint16_t color;                 /* dot color (green or red) */
+    int16_t  lx, ly;                /* label top-left           */
+    uint8_t  len;
+    char     text[LABEL_MAX + 1];
+    uint8_t  arrow;
+    int16_t  ax, ay;                /* arrow tip                */
+    int16_t  h1x, h1y, h2x, h2y;    /* arrow head ends          */
 } ping_t;
 
 /* Where a target should end up, set once per radar frame. */
 typedef struct {
-    uint8_t want;
-    int16_t px, py;                 /* goal ping center                   */
-    int16_t vx, vy;                 /* motion direction, screen px (0 = none) */
-    uint8_t len;
-    char    text[LABEL_MAX + 1];
+    uint8_t  want;
+    int16_t  px, py;
+    uint16_t color;
+    int16_t  vx, vy;                /* motion direction, screen px (0 = none) */
+    uint8_t  len;
+    char     text[LABEL_MAX + 1];
 } goal_t;
 
 static ping_t pings[RADAR_TARGETS];
 static goal_t goals[RADAR_TARGETS];
 
+static int16_t pulse_r;             /* radius of the drawn pulse ring, 0 = none */
+#if !UI_SCAN_PULSE
 static int16_t sweep_deg = -SWEEP_MAX;
 static int8_t  sweep_dir = 1;
-static int16_t sweep_ex, sweep_ey;  /* end point of the line on screen */
+static int16_t sweep_ex, sweep_ey;
+#endif
 static uint8_t sweep_drawn;
 
-static int16_t alert_r_px;          /* alert-zone ring radius, px (0 = none) */
-static uint8_t alert_shown = 0xFF;   /* ALERT text state on screen (0xFF = unknown) */
+static int16_t alert_r_px;          /* alert-zone ring radius, px (0 = none)   */
+static uint8_t alert_shown = 0xFF;  /* ALERT text state on screen (0xFF = none) */
+
+/* ---------------------------------------------------------------------- */
+/* Background                                                              */
+/* ---------------------------------------------------------------------- */
 
 /*
  * bg_color_at - the background color that belongs at screen pixel (x, y).
  *
- * Work relative to the apex: dx to the right, dy upward, d^2 = dx^2 + dy^2.
- *   outside the outer ring or below the apex -> black
- *   fan edge: the 60-degree line from the apex. Its x extent (156) is larger
- *     than its y extent (90), so it has one pixel per column; a pixel is on
- *     it when |dx*90/156 - dy| <= 0.5, i.e. |dx*90 - dy*156| <= 78
- *   outside the edge (e > 78) -> black
- *   ring of radius r: pixels with r - 0.5 <= d <= r + 0.5, which is
- *     |d^2 - r^2| <= r to within a quarter pixel
- *   alert-zone ring: same test with the alert radius; checked first so it
- *     stays red where it lands on a range ring
- *   center line: dx == 0
+ * Relative to the apex: dx to the right, dy upward, d^2 = dx^2 + dy^2,
+ * R = dome radius. In order of priority:
+ *   below the baseline or outside R          -> black
+ *   rim: d in about [R-1.5, R+0.5]           -> bright edge (2 px thick)
+ *   baseline (dy == 0): dashes, 4 px on/off  -> line color
+ *   alert ring at the alert radius           -> red
+ *   range ring: |d^2 - r^2| <= r (d within half a pixel of r), dotted by
+ *     drawing only where (x + y) & 2         -> ring color
+ *   center line (dx == 0): dashes            -> line color
+ *   cone edge: the 60-degree line, |dx*100 - dy*173| <= 86 (x is the major
+ *     axis there, so one pixel per column)   -> cone color
+ *   fill: green that brightens with d^2/R^2 (cheap radial gradient);
+ *     outside the cone (|dx|*100 > dy*173) the same at one third
  */
 static uint16_t bg_color_at(int16_t x, int16_t y)
 {
@@ -128,17 +154,17 @@ static uint16_t bg_color_at(int16_t x, int16_t y)
     }
 
     int32_t d2 = (int32_t)dx * dx + (int32_t)dy * dy;
-    if (d2 > (int32_t)R_PX * R_PX + R_PX) {
+    const int32_t R2 = (int32_t)R_PX * R_PX;
+    if (d2 > R2 + R_PX) {
         return C_BG;
+    }
+    if (d2 >= (int32_t)(R_PX - 1) * (R_PX - 1) - (R_PX - 1)) {
+        return C_EDGE;
     }
 
     int16_t adx = (dx < 0) ? -dx : dx;
-    int32_t e = (int32_t)adx * EDGE_DY - (int32_t)dy * EDGE_DX;
-    if (e > EDGE_DX / 2) {
-        return C_BG;                    /* outside the fan */
-    }
-    if (e >= -(EDGE_DX / 2)) {
-        return C_EDGE;                  /* on the fan edge */
+    if (dy == 0) {
+        return ((adx >> 2) & 1) ? C_LINE : C_BG;
     }
 
     if (alert_r_px) {
@@ -149,17 +175,30 @@ static uint16_t bg_color_at(int16_t x, int16_t y)
     }
 
     for (uint8_t i = 0; i < N_RINGS; i++) {
-        int32_t r  = pgm_read_byte(&ring_px[i]);
-        int32_t r2 = r * r;
-        if (d2 >= r2 - r && d2 <= r2 + r) {
-            return (i == N_RINGS - 1) ? C_OUTER : C_RING;
+        int32_t r = pgm_read_byte(&ring_px[i]);
+        if (d2 >= r * r - r && d2 <= r * r + r) {
+            if ((x + y) & 2) {
+                return C_RING;
+            }
+            break;
         }
     }
 
     if (dx == 0) {
-        return C_CENTER;
+        return ((dy >> 2) & 1) ? C_LINE : C_BG;
     }
-    return C_BG;
+
+    /* |adx*100 - dy*173| <= 86 (= 173/2): within half a pixel of the edge. */
+    int32_t e = (int32_t)adx * COV_DY - (int32_t)dy * COV_DX;
+    if (e >= -(COV_DX / 2) && e <= COV_DX / 2) {
+        return C_CONE;
+    }
+
+    uint8_t g = (uint8_t)(6 + (d2 * 22) / R2);      /* 6..28 of 63 */
+    if (e > 0) {
+        g = g / 3 + 1;                               /* outside the cone */
+    }
+    return GREEN6(g);
 }
 
 /*
@@ -186,9 +225,8 @@ static void restore_rect(int16_t x, int16_t y, int16_t w, int16_t h)
 }
 
 /*
- * draw_label - draw text whose "transparent" pixels show the radar
- * background (rings stay visible behind labels). `s` is in RAM, or in flash
- * if `in_flash` is set. Must fit fully on screen.
+ * draw_label - text whose non-glyph pixels show the background, so the
+ * dome stays visible behind labels. `s` in RAM, or flash if in_flash.
  */
 static void draw_label(int16_t x, int16_t y, const char *s, uint8_t in_flash, uint16_t fg)
 {
@@ -196,7 +234,8 @@ static void draw_label(int16_t x, int16_t y, const char *s, uint8_t in_flash, ui
     while ((in_flash ? pgm_read_byte(&s[len]) : (uint8_t)s[len]) != '\0') {
         len++;
     }
-    if (len == 0) {
+    if (len == 0 || x < 0 || y < 0 ||
+        x + len * GFX_CHAR_W > LCD_WIDTH || y + GFX_CHAR_H > LCD_HEIGHT) {
         return;
     }
 
@@ -221,25 +260,44 @@ static void draw_label(int16_t x, int16_t y, const char *s, uint8_t in_flash, ui
     ili9341_end();
 }
 
+#if UI_SCAN_PULSE
 /*
- * draw_ring_label - draw the range label for ring i.
+ * arc_walk - the upper half of a circle of radius r around the apex
+ * (midpoint circle algorithm, the four upper octants), each pixel colored
+ * `color`, or fn(x, y) if fn is set. Used to draw and erase the pulse.
  */
-static void draw_ring_label(uint8_t i)
+static void arc_walk(int16_t r, uint16_t color, gfx_color_fn fn)
 {
-    int16_t r = pgm_read_byte(&ring_px[i]);
-    const char *lbl = (const char *)pgm_read_word(&ring_lbl[i]);
-    draw_label(RING_LBL_X, RING_LBL_Y(r), lbl, 1, C_LABEL);
-}
+    int16_t x = r;
+    int16_t y = 0;
+    int16_t err = 1 - r;
 
-/* ---- Bounding boxes, to find what an erase or the sweep touched ---- */
+    while (x >= y) {
+        int16_t px[4] = { APEX_X + x, APEX_X - x, APEX_X + y, APEX_X - y };
+        int16_t py[4] = { APEX_Y - y, APEX_Y - y, APEX_Y - x, APEX_Y - x };
+        for (uint8_t k = 0; k < 4; k++) {
+            ili9341_draw_pixel(px[k], py[k], fn ? fn(px[k], py[k]) : color);
+        }
+        y++;
+        if (err < 0) {
+            err += 2 * y + 1;
+        } else {
+            x--;
+            err += 2 * (y - x) + 1;
+        }
+    }
+}
+#endif
+
+
+/* ---------------------------------------------------------------------- */
+/* Bounding boxes                                                          */
+/* ---------------------------------------------------------------------- */
 
 typedef struct {
     int16_t l, t, r, b;             /* inclusive */
 } box_t;
 
-/*
- * box_add - grow box `bx` to include point (x, y).
- */
 static void box_add(box_t *bx, int16_t x, int16_t y)
 {
     if (x < bx->l) bx->l = x;
@@ -253,7 +311,7 @@ static void box_add(box_t *bx, int16_t x, int16_t y)
  */
 static box_t ping_box(const ping_t *p)
 {
-    box_t bx = { p->px - PING_HALF, p->py - PING_HALF, p->px + PING_HALF, p->py + PING_HALF };
+    box_t bx = { p->px - HALO_R, p->py - HALO_R, p->px + HALO_R, p->py + HALO_R };
     box_add(&bx, p->lx, p->ly);
     box_add(&bx, p->lx + p->len * GFX_CHAR_W - 1, p->ly + GFX_CHAR_H - 1);
     if (p->arrow) {
@@ -264,53 +322,70 @@ static box_t ping_box(const ping_t *p)
     return bx;
 }
 
+#if UI_SCAN_PULSE
 /*
- * ring_label_box - bounding box of ring label i.
+ * box_near_arc - true if box bx may touch the circle of radius r around the
+ * apex: compare the distance from the apex to the box center with r, using
+ * half the box width + height as the tolerance.
  */
-static box_t ring_label_box(uint8_t i)
+static uint8_t box_near_arc(const box_t *bx, int16_t r)
 {
-    int16_t r = pgm_read_byte(&ring_px[i]);
-    box_t bx = { RING_LBL_X, RING_LBL_Y(r),
-                 RING_LBL_X + RING_LBL_W - 1, RING_LBL_Y(r) + GFX_CHAR_H - 1 };
-    return bx;
+    int32_t cx = (bx->l + bx->r) / 2 - APEX_X;
+    int32_t cy = APEX_Y - (bx->t + bx->b) / 2;
+    int16_t d = isqrt32((uint32_t)(cx * cx + cy * cy));
+    int16_t tol = (bx->r - bx->l) / 2 + (bx->b - bx->t) / 2 + 1;
+    int16_t diff = d - r;
+    return diff >= -tol && diff <= tol;
 }
+#endif
 
+
+#if !UI_SCAN_PULSE
 /*
- * boxes_overlap - true if two boxes share any pixel.
+ * box_near_line - true if box bx may touch the sweep line at angle `deg`
+ * (perpendicular distance |dx*cos(a) - dy*sin(a)|, sin/cos in Q15).
  */
-static uint8_t boxes_overlap(const box_t *a, const box_t *b)
+static uint8_t box_near_line(const box_t *bx, int16_t deg)
 {
-    return !(a->r < b->l || b->r < a->l || a->b < b->t || b->b < a->t);
+    int32_t dx = (bx->l + bx->r) / 2 - APEX_X;
+    int32_t dy = APEX_Y - (bx->t + bx->b) / 2;
+    int32_t perp = (dx * cos_q15(deg) - dy * sin_q15(deg)) >> 15;
+    if (perp < 0) {
+        perp = -perp;
+    }
+    return perp <= (bx->r - bx->l) / 2 + (bx->b - bx->t) / 2 + 1;
 }
+#endif
 
-/* ---- Pings ---- */
+
+/* ---------------------------------------------------------------------- */
+/* Pings                                                                   */
+/* ---------------------------------------------------------------------- */
 
 /*
- * draw_ping - draw one target's arrow, label and square (square on top).
+ * draw_ping - arrow, glow ring, dot, then the distance label underneath.
  */
 static void draw_ping(uint8_t n)
 {
     const ping_t *p = &pings[n];
-    uint16_t c = ping_color[n];
 
     if (p->arrow) {
-        gfx_line(p->px, p->py, p->ax, p->ay, c);
-        gfx_line(p->ax, p->ay, p->h1x, p->h1y, c);
-        gfx_line(p->ax, p->ay, p->h2x, p->h2y, c);
+        gfx_line(p->px, p->py, p->ax, p->ay, p->color);
+        gfx_line(p->ax, p->ay, p->h1x, p->h1y, p->color);
+        gfx_line(p->ax, p->ay, p->h2x, p->h2y, p->color);
     }
-    draw_label(p->lx, p->ly, p->text, 0, c);
-    ili9341_fill_rect(p->px - PING_HALF, p->py - PING_HALF,
-                      2 * PING_HALF + 1, 2 * PING_HALF + 1, c);
+    gfx_circle(p->px, p->py, HALO_R, (p->color == C_PING) ? C_PING_HALO : p->color);
+    gfx_fill_circle(p->px, p->py, PING_R, p->color);
+    draw_label(p->lx, p->ly, p->text, 0, C_LABEL);
 }
 
 /*
- * erase_ping - restore the background under a target's square, label and
- * arrow.
+ * erase_ping - restore the background under a ping's dot, label and arrow.
  */
 static void erase_ping(uint8_t n)
 {
     const ping_t *p = &pings[n];
-    restore_rect(p->px - PING_HALF, p->py - PING_HALF, 2 * PING_HALF + 1, 2 * PING_HALF + 1);
+    restore_rect(p->px - HALO_R, p->py - HALO_R, 2 * HALO_R + 1, 2 * HALO_R + 1);
     restore_rect(p->lx, p->ly, p->len * GFX_CHAR_W, GFX_CHAR_H);
     if (p->arrow) {
         gfx_line_fn(p->px, p->py, p->ax, p->ay, bg_color_at);
@@ -320,8 +395,7 @@ static void erase_ping(uint8_t n)
 }
 
 /*
- * format_meters - write a distance as "d.dm" (tenths of a meter, rounded).
- * Returns the string length.
+ * format_meters - distance as "d.dm" (tenths of a meter, rounded).
  */
 static uint8_t format_meters(char *buf, uint16_t mm)
 {
@@ -341,31 +415,29 @@ static uint8_t format_meters(char *buf, uint16_t mm)
 }
 
 /*
- * layout_ping - fill in a ping's label and arrow positions for a ping
- * center (px, py), text from goal g.
+ * layout_ping - place the label (centered under the dot, kept on screen)
+ * and the arrow for a dot at (px, py) with goal g.
  *
- * Arrow: the goal's motion vector scaled to ARROW_LEN px. The head is two
- * short lines from the tip, ARROW_BACK px back along the shaft and
- * ARROW_WIDE px to either side (perpendicular = (-dy, dx)).
+ * Arrow: the motion vector scaled to ARROW_LEN px; the head is two lines
+ * from the tip, ARROW_BACK px back and ARROW_WIDE px to each side.
  */
 static void layout_ping(ping_t *p, int16_t px, int16_t py, const goal_t *g)
 {
     p->px = px;
     p->py = py;
+    p->color = g->color;
     p->len = g->len;
     for (uint8_t i = 0; i <= g->len; i++) {
         p->text[i] = g->text[i];
     }
 
-    /* Label to the right of the ping, or to the left near the right edge. */
     int16_t w = p->len * GFX_CHAR_W;
-    p->lx = px + PING_HALF + 3;
-    if (p->lx + w > LCD_WIDTH) {
-        p->lx = px - PING_HALF - 3 - w;
-    }
-    p->ly = py - GFX_CHAR_H / 2;
-    if (p->ly > LCD_HEIGHT - GFX_CHAR_H) {
-        p->ly = LCD_HEIGHT - GFX_CHAR_H;
+    p->lx = px - w / 2;
+    if (p->lx < 0) p->lx = 0;
+    if (p->lx + w > LCD_WIDTH) p->lx = LCD_WIDTH - w;
+    p->ly = py + HALO_R + LABEL_GAP;
+    if (p->ly + GFX_CHAR_H > APEX_Y) {
+        p->ly = py - HALO_R - LABEL_GAP - GFX_CHAR_H;   /* near the baseline: above */
     }
 
     p->arrow = (g->vx != 0 || g->vy != 0);
@@ -394,7 +466,8 @@ static uint8_t same_ping(const ping_t *a, const ping_t *b)
 {
     if (a->on != b->on) return 0;
     if (!a->on) return 1;
-    if (a->px != b->px || a->py != b->py || a->arrow != b->arrow) return 0;
+    if (a->px != b->px || a->py != b->py || a->color != b->color ||
+        a->arrow != b->arrow) return 0;
     if (a->arrow && (a->ax != b->ax || a->ay != b->ay)) return 0;
     for (uint8_t i = 0; i <= a->len; i++) {
         if (a->text[i] != b->text[i]) return 0;
@@ -414,26 +487,45 @@ static int16_t glide(int16_t cur, int16_t goal)
     return cur + d / 2;
 }
 
+/* ---------------------------------------------------------------------- */
+/* Public                                                                  */
+/* ---------------------------------------------------------------------- */
+
 /*
- * ui_radar_init - clear the screen and draw the radar background.
- * The fan's bounding box (313 x 181 px) is streamed from bg_color_at().
+ * ui_radar_init - clear the screen and draw the dome, range labels and the
+ * big range text.
  */
 void ui_radar_init(void)
 {
-    /* Alert ring radius: mm -> px at 180 px per 6000 mm. */
     alert_r_px = (int16_t)(((int32_t)alert_get_radius() * R_PX) / RANGE_MM);
     alert_shown = 0xFF;
 
     gfx_fill_screen(C_BG);
-    restore_rect(APEX_X - EDGE_DX, APEX_Y - R_PX, 2 * EDGE_DX + 1, R_PX + 1);
-    for (uint8_t i = 0; i < N_RINGS; i++) {
-        draw_ring_label(i);
+    restore_rect(APEX_X - R_PX, APEX_Y - R_PX, 2 * R_PX + 1, R_PX + 1);
+
+    /* Range labels under the baseline, at each ring on both sides. */
+    for (uint8_t i = 0; i <= N_RINGS; i++) {
+        int16_t r = (i < N_RINGS) ? pgm_read_byte(&ring_px[i]) : R_PX;
+        const char *lbl = (const char *)pgm_read_word(&range_lbl[i]);
+        uint8_t len = 0;
+        while (pgm_read_byte(&lbl[len])) {
+            len++;
+        }
+        int16_t w = len * GFX_CHAR_W;
+        int16_t xr = APEX_X + r - w / 2;
+        int16_t xl = APEX_X - r - w / 2;
+        if (xr + w > LCD_WIDTH) xr = LCD_WIDTH - w;
+        if (xl < 0) xl = 0;
+        gfx_text_P(xr, APEX_Y + 4, lbl, C_TEXT, C_BG, 1);
+        gfx_text_P(xl, APEX_Y + 4, lbl, C_TEXT, C_BG, 1);
     }
+    gfx_text_P(APEX_X - 2 * 6, APEX_Y + 14, PSTR("6M"), COLOR_WHITE, C_BG, 2);
 
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
         pings[n].on = 0;
         goals[n].want = 0;
     }
+    pulse_r = 0;
     sweep_drawn = 0;
 }
 
@@ -443,6 +535,8 @@ void ui_radar_init(void)
  */
 void ui_set_targets(void)
 {
+    uint16_t radius = alert_get_radius();
+
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
         const track_t *t = track_get(n);
         goal_t *g = &goals[n];
@@ -451,32 +545,28 @@ void ui_set_targets(void)
             continue;
         }
 
-        /* mm -> px: 180 px per 6000 mm, X mirrored if RADAR_X_SIGN = -1. */
+        /* mm -> px at 156 px per 6000 mm; X mirrored if RADAR_X_SIGN = -1. */
         int16_t dx = (int16_t)((RADAR_X_SIGN * (int32_t)t->x * R_PX) / RANGE_MM);
         int16_t dy = (int16_t)(((int32_t)t->y * R_PX) / RANGE_MM);
         int16_t adx = (dx < 0) ? -dx : dx;
-        if (dy <= 0 || (int32_t)adx * EDGE_DY > (int32_t)dy * EDGE_DX) {
-            continue;                   /* outside the fan */
+        if (dy <= 0 || (int32_t)adx * COV_DY > (int32_t)dy * COV_DX) {
+            continue;                   /* outside the +/-60 degree cone */
         }
 
         g->px = APEX_X + dx;
         g->py = APEX_Y - dy;
+        g->color = (t->dist < radius) ? C_PING_HOT : C_PING;
         g->len = format_meters(g->text, t->dist);
-        /* Motion in screen terms: x right, y down (radar y is away = up). */
-        g->vx = (int16_t)(RADAR_X_SIGN * t->mx);
-        g->vy = (int16_t)(-t->my);
+        g->vx = (int16_t)(RADAR_X_SIGN * t->mx);    /* screen x right */
+        g->vy = (int16_t)(-t->my);                  /* screen y down  */
         g->want = 1;
     }
 }
 
 /*
- * ui_animate - one animation tick (every 40 ms).
- *
- *   1. Work out each ping's next state: new targets appear at their goal,
- *      existing ones move halfway to it, unwanted ones turn off.
- *   2. Erase every ping whose drawing changes.
- *   3. Redraw ring labels that an erase touched.
- *   4. Draw all visible pings (an erase may have cut into an unchanged one).
+ * ui_animate - one animation tick: move pings halfway to their goals,
+ * erase the ones that change, then draw all visible pings (an erase can cut
+ * into a neighbor).
  */
 void ui_animate(void)
 {
@@ -504,16 +594,8 @@ void ui_animate(void)
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
         if (changed[n] && pings[n].on) {
             erase_ping(n);
-            box_t pb = ping_box(&pings[n]);
-            for (uint8_t i = 0; i < N_RINGS; i++) {
-                box_t lb = ring_label_box(i);
-                if (boxes_overlap(&pb, &lb)) {
-                    draw_ring_label(i);
-                }
-            }
         }
     }
-
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
         pings[n] = next[n];
         if (pings[n].on) {
@@ -522,40 +604,50 @@ void ui_animate(void)
     }
 }
 
+#if UI_SCAN_PULSE
 /*
- * near_line - true if box `bx` may touch the sweep line at angle `deg`.
- * Tests the box center: perpendicular distance from the line through the
- * apex at angle a is |dx*cos(a) - dy*sin(a)| (sin/cos in Q15, >> 15 for px),
- * compared against half the box diagonal (approximated by half width +
- * half height) plus 1 px.
+ * redraw_pings_near_arc / _line - put back any ping the scan just crossed,
+ * so pings stay on top of the animation.
  */
-static uint8_t near_line(const box_t *bx, int16_t deg)
+static void redraw_pings_near_arc(int16_t r_old, int16_t r_new)
 {
-    int32_t dx = (bx->l + bx->r) / 2 - APEX_X;
-    int32_t dy = APEX_Y - (bx->t + bx->b) / 2;
-    int32_t perp = (dx * cos_q15(deg) - dy * sin_q15(deg)) >> 15;
-    if (perp < 0) {
-        perp = -perp;
+    for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
+        if (!pings[n].on) {
+            continue;
+        }
+        box_t pb = ping_box(&pings[n]);
+        if ((r_old && box_near_arc(&pb, r_old)) || box_near_arc(&pb, r_new)) {
+            draw_ping(n);
+        }
     }
-    return perp <= (bx->r - bx->l) / 2 + (bx->b - bx->t) / 2 + 1;
 }
+#endif
+
 
 /*
- * ui_sweep_step - move the sweep line SWEEP_STEP degrees, bouncing between
- * -SWEEP_MAX and +SWEEP_MAX.
- *   1. erase the old line by restoring the background under each pixel
- *   2. draw the new line
- *   3. redraw any ring label or ping the old or new line passed over, so
- *      they stay on top of the sweep
+ * ui_scan_step - advance the scan animation by one step.
+ *
+ * Pulse: erase the old ring by restoring the background under each of its
+ * pixels, grow the radius by PULSE_STEP (back to PULSE_MIN after the edge),
+ * draw the new ring. Each ring is ~pi*r pixels, at most ~490 at the rim.
+ *
+ * Sweep: erase/redraw a line from the apex, bouncing within the cone.
  */
-void ui_sweep_step(void)
+void ui_scan_step(void)
 {
+#if UI_SCAN_PULSE
+    int16_t old_r = pulse_r;
+    if (old_r) {
+        arc_walk(old_r, 0, bg_color_at);
+    }
+    pulse_r = (old_r == 0 || old_r + PULSE_STEP > R_PX - 3) ? PULSE_MIN : old_r + PULSE_STEP;
+    arc_walk(pulse_r, C_PULSE, 0);
+    redraw_pings_near_arc(old_r, pulse_r);
+#else
     int16_t old_deg = sweep_deg;
-
     if (sweep_drawn) {
         gfx_line_fn(APEX_X, APEX_Y, sweep_ex, sweep_ey, bg_color_at);
     }
-
     sweep_deg += sweep_dir * SWEEP_STEP;
     if (sweep_deg >= SWEEP_MAX) {
         sweep_deg = SWEEP_MAX;
@@ -564,81 +656,33 @@ void ui_sweep_step(void)
         sweep_deg = -SWEEP_MAX;
         sweep_dir = 1;
     }
-
-    /* End point: x = r sin(a) to the right, y = r cos(a) upward. */
     sweep_ex = APEX_X + (int16_t)(((int32_t)SWEEP_R * sin_q15(sweep_deg)) >> 15);
     sweep_ey = APEX_Y - (int16_t)(((int32_t)SWEEP_R * cos_q15(sweep_deg)) >> 15);
     gfx_line(APEX_X, APEX_Y, sweep_ex, sweep_ey, C_SWEEP);
     sweep_drawn = 1;
 
-    for (uint8_t i = 0; i < N_RINGS; i++) {
-        box_t lb = ring_label_box(i);
-        if (near_line(&lb, old_deg) || near_line(&lb, sweep_deg)) {
-            draw_ring_label(i);
-        }
-    }
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
         if (!pings[n].on) {
             continue;
         }
         box_t pb = ping_box(&pings[n]);
-        if (near_line(&pb, old_deg) || near_line(&pb, sweep_deg)) {
+        if (box_near_line(&pb, old_deg) || box_near_line(&pb, sweep_deg)) {
             draw_ping(n);
         }
     }
+#endif
 }
 
 /*
- * ui_debug_target - large readout of target 1 in the top bar: the radar's
- * raw X/Y (white) above the filtered X/Y (yellow), in mm, to compare the
- * radar against the filter. Scale-2 text so it can be read on a phone video.
- * Layout keeps clear of the "6m" ring label (x 163-186, y 41-48):
- *   left  column x = 4..135   "RAW X-1234" / "FLT X-1234"
- *   right column x = 196..291 "Y 5678"
- */
-void ui_debug_target(void)
-{
-    const track_t *t = track_get(0);
-    const int16_t y_raw = 12;
-    const int16_t y_flt = 30;
-
-    int16_t x = gfx_text_P(4, y_raw, PSTR("RAW X"), COLOR_CYAN, C_BG, 2);
-    if (t->raw_ok) {
-        gfx_int_pad(x, y_raw, t->raw_x, 6, COLOR_WHITE, C_BG, 2);
-    } else {
-        gfx_text_P(x, y_raw, PSTR("     -"), COLOR_GRAY, C_BG, 2);
-    }
-    x = gfx_text_P(196, y_raw, PSTR("Y"), COLOR_CYAN, C_BG, 2);
-    if (t->raw_ok) {
-        gfx_int_pad(x, y_raw, t->raw_y, 6, COLOR_WHITE, C_BG, 2);
-    } else {
-        gfx_text_P(x, y_raw, PSTR("     -"), COLOR_GRAY, C_BG, 2);
-    }
-
-    x = gfx_text_P(4, y_flt, PSTR("FLT X"), COLOR_CYAN, C_BG, 2);
-    if (t->shown) {
-        gfx_int_pad(x, y_flt, t->x, 6, COLOR_YELLOW, C_BG, 2);
-    } else {
-        gfx_text_P(x, y_flt, PSTR("     -"), COLOR_GRAY, C_BG, 2);
-    }
-    x = gfx_text_P(196, y_flt, PSTR("Y"), COLOR_CYAN, C_BG, 2);
-    if (t->shown) {
-        gfx_int_pad(x, y_flt, t->y, 6, COLOR_YELLOW, C_BG, 2);
-    } else {
-        gfx_text_P(x, y_flt, PSTR("     -"), COLOR_GRAY, C_BG, 2);
-    }
-}
-
-/*
- * ui_alert_status - bottom line: zone radius and mute on the left, a red
- * "ALERT" on the right while the alert is active. Redrawn only on change.
+ * ui_alert_status - bottom line: zone radius (and MUTED) on the left, a red
+ * "ALERT" on the right while active. Redrawn only on change.
  */
 void ui_alert_status(uint8_t active)
 {
     if (active == alert_shown) {
         return;
     }
-    if (alert_shown == 0xFF) {          /* first call: static part */
+    if (alert_shown == 0xFF) {
         char buf[LABEL_MAX + 1];
         int16_t x = gfx_text_P(4, 231, PSTR("ZONE "), C_STATUS, C_BG, 1);
         format_meters(buf, alert_get_radius());
@@ -650,6 +694,31 @@ void ui_alert_status(uint8_t active)
     gfx_text_P(LCD_WIDTH - 5 * GFX_CHAR_W - 4, 231, active ? PSTR("ALERT") : PSTR("     "),
                COLOR_WHITE, active ? COLOR_RED : C_BG, 1);
     alert_shown = active;
+}
+
+/*
+ * ui_debug_target - small readout of target 1 in the top bar: raw X/Y from
+ * the radar and the filtered X/Y, in mm.
+ */
+void ui_debug_target(void)
+{
+    const track_t *t = track_get(0);
+
+    int16_t x = gfx_text_P(4, 14, PSTR("RAW"), C_STATUS, C_BG, 1);
+    if (t->raw_ok) {
+        x = gfx_int_pad(x, 14, t->raw_x, 6, COLOR_WHITE, C_BG, 1);
+        gfx_int_pad(x, 14, t->raw_y, 6, COLOR_WHITE, C_BG, 1);
+    } else {
+        gfx_text_P(x, 14, PSTR("     -     -"), C_STATUS, C_BG, 1);
+    }
+
+    x = gfx_text_P(4, 24, PSTR("FLT"), C_STATUS, C_BG, 1);
+    if (t->shown) {
+        x = gfx_int_pad(x, 24, t->x, 6, C_TEXT, C_BG, 1);
+        gfx_int_pad(x, 24, t->y, 6, C_TEXT, C_BG, 1);
+    } else {
+        gfx_text_P(x, 24, PSTR("     -     -"), C_STATUS, C_BG, 1);
+    }
 }
 
 /*

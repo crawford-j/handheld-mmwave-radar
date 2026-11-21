@@ -1,6 +1,6 @@
 /*
- * ui.h - Radar view: fan, range rings, sweep line, target pings, labels and
- * direction arrows.
+ * ui.h - Radar view: dome, range rings, scan animation (pulse or sweep),
+ * target pings with distance labels and direction arrows, status lines.
  */
 
 #ifndef UI_H
@@ -15,10 +15,16 @@
 #define RADAR_X_SIGN 1
 #endif
 
+/* Scan animation: 1 = expanding pulse ring from the apex (sonar style),
+ * 0 = rotating sweep line (the brief's original "rotating sweep line"). */
+#ifndef UI_SCAN_PULSE
+#define UI_SCAN_PULSE 1
+#endif
+
 void ui_radar_init(void);
 void ui_set_targets(void);
 void ui_animate(void);
-void ui_sweep_step(void);
+void ui_scan_step(void);
 void ui_status(const radar_stats_t *s, uint16_t hz);
 void ui_debug_target(void);
 void ui_alert_status(uint8_t active);
