@@ -106,7 +106,7 @@ int main(void)
 #endif
         if (have_new) {
             ui_set_targets();
-            ui_alert_status(alert_update());
+            ui_alert_status(alert_update(now));
         }
 
 

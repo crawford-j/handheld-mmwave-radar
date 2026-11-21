@@ -750,12 +750,13 @@ void ui_scan_step(uint32_t now)
 }
 
 /*
- * ui_alert_status - bottom line: zone radius (and MUTED) on the left, a red
- * "ALERT" on the right while active. Redrawn only on change.
+ * ui_alert_status - bottom line: zone radius (and MUTED) on the left; on the
+ * right a red "ALERT" while active, a gray "ARMING" during the power-up
+ * delay, blank otherwise. Redrawn only on change.
  */
-void ui_alert_status(uint8_t active)
+void ui_alert_status(uint8_t state)
 {
-    if (active == alert_shown) {
+    if (state == alert_shown) {
         return;
     }
     if (alert_shown == 0xFF) {
@@ -767,9 +768,15 @@ void ui_alert_status(uint8_t active)
             gfx_text_P(x, 231, PSTR("  MUTED"), C_STATUS, C_BG, 1);
         }
     }
-    gfx_text_P(LCD_WIDTH - 5 * GFX_CHAR_W - 4, 231, active ? PSTR("ALERT") : PSTR("     "),
-               COLOR_WHITE, active ? COLOR_RED : C_BG, 1);
-    alert_shown = active;
+    const int16_t x_right = LCD_WIDTH - 6 * GFX_CHAR_W - 4;     /* room for "ARMING" */
+    if (state == ALERT_ON) {
+        gfx_text_P(x_right, 231, PSTR(" ALERT"), COLOR_WHITE, COLOR_RED, 1);
+    } else if (state == ALERT_ARMING) {
+        gfx_text_P(x_right, 231, PSTR("ARMING"), C_STATUS, C_BG, 1);
+    } else {
+        gfx_text_P(x_right, 231, PSTR("      "), C_STATUS, C_BG, 1);
+    }
+    alert_shown = state;
 }
 
 /*
