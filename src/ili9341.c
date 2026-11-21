@@ -36,12 +36,13 @@
 /*
  * Landscape orientation. MV swaps rows and columns, so the 240x320 native
  * panel is addressed as 320 wide x 240 tall. MX/MY pick which corner is
- * (0,0); adjust after the milestone 1 test if the image is mirrored.
+ * (0,0). On this build MV alone (0x28) showed the image upside down, so
+ * both MX and MY are set to rotate it 180 degrees: 0xE8.
  * BGR = 1 because these panels use a BGR filter; if red and blue appear
  * swapped on the test pattern, clear it.
  */
 #ifndef LCD_MADCTL
-#define LCD_MADCTL   (MADCTL_MV | MADCTL_BGR)
+#define LCD_MADCTL   (MADCTL_MY | MADCTL_MX | MADCTL_MV | MADCTL_BGR)
 #endif
 
 /* ---- Pin helpers ---- */
