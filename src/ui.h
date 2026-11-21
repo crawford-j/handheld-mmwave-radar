@@ -1,5 +1,6 @@
 /*
- * ui.h - Radar view: fan, range rings, sweep line, target pings and labels.
+ * ui.h - Radar view: fan, range rings, sweep line, target pings, labels and
+ * direction arrows.
  */
 
 #ifndef UI_H
@@ -14,11 +15,9 @@
 #define RADAR_X_SIGN 1
 #endif
 
-/* Targets closer than this are ignored: that is the person holding it. */
-#define MIN_RANGE_MM  500
-
 void ui_radar_init(void);
-void ui_radar_targets(const radar_frame_t *fr);
+void ui_set_targets(void);
+void ui_animate(void);
 void ui_sweep_step(void);
 void ui_status(const radar_stats_t *s, uint16_t hz);
 
