@@ -412,8 +412,6 @@ void ui_radar_init(void)
         draw_ring_label(i);
     }
 
-    gfx_text_P(4, 14, PSTR("RADAR"), COLOR_YELLOW, C_BG, 2);
-
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
         pings[n].on = 0;
         goals[n].want = 0;
@@ -573,29 +571,43 @@ void ui_sweep_step(void)
 }
 
 /*
- * ui_debug_target - top-right readout of target 1: the radar's raw X/Y next
- * to the filtered X/Y (mm), to see whether lag comes from the radar or the
- * filter. Dashes when there is no reading / no confirmed target.
+ * ui_debug_target - large readout of target 1 in the top bar: the radar's
+ * raw X/Y (white) above the filtered X/Y (yellow), in mm, to compare the
+ * radar against the filter. Scale-2 text so it can be read on a phone video.
+ * Layout keeps clear of the "6m" ring label (x 163-186, y 41-48):
+ *   left  column x = 4..135   "RAW X-1234" / "FLT X-1234"
+ *   right column x = 196..291 "Y 5678"
  */
 void ui_debug_target(void)
 {
     const track_t *t = track_get(0);
-    const int16_t x0 = 196;
+    const int16_t y_raw = 12;
+    const int16_t y_flt = 30;
 
-    int16_t x = gfx_text_P(x0, 14, PSTR("RAW"), C_STATUS, C_BG, 1);
+    int16_t x = gfx_text_P(4, y_raw, PSTR("RAW X"), COLOR_CYAN, C_BG, 2);
     if (t->raw_ok) {
-        x = gfx_int_pad(x, 14, t->raw_x, 6, COLOR_WHITE, C_BG, 1);
-        gfx_int_pad(x, 14, t->raw_y, 6, COLOR_WHITE, C_BG, 1);
+        gfx_int_pad(x, y_raw, t->raw_x, 6, COLOR_WHITE, C_BG, 2);
     } else {
-        gfx_text_P(x, 14, PSTR("     -     -"), C_STATUS, C_BG, 1);
+        gfx_text_P(x, y_raw, PSTR("     -"), COLOR_GRAY, C_BG, 2);
+    }
+    x = gfx_text_P(196, y_raw, PSTR("Y"), COLOR_CYAN, C_BG, 2);
+    if (t->raw_ok) {
+        gfx_int_pad(x, y_raw, t->raw_y, 6, COLOR_WHITE, C_BG, 2);
+    } else {
+        gfx_text_P(x, y_raw, PSTR("     -"), COLOR_GRAY, C_BG, 2);
     }
 
-    x = gfx_text_P(x0, 24, PSTR("FLT"), C_STATUS, C_BG, 1);
+    x = gfx_text_P(4, y_flt, PSTR("FLT X"), COLOR_CYAN, C_BG, 2);
     if (t->shown) {
-        x = gfx_int_pad(x, 24, t->x, 6, COLOR_YELLOW, C_BG, 1);
-        gfx_int_pad(x, 24, t->y, 6, COLOR_YELLOW, C_BG, 1);
+        gfx_int_pad(x, y_flt, t->x, 6, COLOR_YELLOW, C_BG, 2);
     } else {
-        gfx_text_P(x, 24, PSTR("     -     -"), C_STATUS, C_BG, 1);
+        gfx_text_P(x, y_flt, PSTR("     -"), COLOR_GRAY, C_BG, 2);
+    }
+    x = gfx_text_P(196, y_flt, PSTR("Y"), COLOR_CYAN, C_BG, 2);
+    if (t->shown) {
+        gfx_int_pad(x, y_flt, t->y, 6, COLOR_YELLOW, C_BG, 2);
+    } else {
+        gfx_text_P(x, y_flt, PSTR("     -"), COLOR_GRAY, C_BG, 2);
     }
 }
 
