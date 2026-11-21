@@ -24,6 +24,7 @@
 #include "track.h"
 #include "alert.h"
 #include "buzzer.h"
+#include "button.h"
 #include "ui.h"
 
 /* `make RADAR_SETUP=1` builds the one-time radar baud switch instead of the
@@ -48,6 +49,12 @@
 #define STATUS_MS       500     /* debug line refresh                          */
 #define DEBUG_MS        200     /* raw vs filtered readout refresh             */
 #define RATE_WINDOW_MS  1000    /* frame-rate measurement window               */
+
+/* Brightness steps for the D2 button, as level/256 of full color:
+ * 100 %, 55 %, 30 %, 15 %. The backlight itself is hard-wired on, so this
+ * dims what is drawn, not the backlight. */
+static const uint8_t bright_steps[] = { 255, 140, 77, 38 };
+#define N_BRIGHT (sizeof(bright_steps) / sizeof(bright_steps[0]))
 
 /*
  * main - init, then loop: parse radar bytes and filter each new frame,
@@ -77,6 +84,7 @@ int main(void)
     tick_init();
     radar_init();
     buzzer_init();
+    button_init();
     sei();                              /* enable interrupts (tick + USART RX) */
 
     uint32_t last_tick   = 0;
@@ -86,6 +94,7 @@ int main(void)
     uint16_t rate_count0 = 0;
     uint16_t hz          = 0;
     uint16_t draw_max    = 0;           /* longest tick since last status (ms) */
+    uint8_t  bright_idx  = 0;
 
     for (;;) {
         uint32_t now = tick_ms();
@@ -109,6 +118,18 @@ int main(void)
             ui_alert_status(alert_update());
         }
 
+
+        /* D2 button: next brightness step, then redraw everything at the new
+         * level (~1-2 s; radar bytes arriving meanwhile may overflow the ring
+         * buffer, which only drops a few frames). */
+        if (button_pressed(now)) {
+            bright_idx = (uint8_t)((bright_idx + 1) % N_BRIGHT);
+            ili9341_set_brightness(bright_steps[bright_idx]);
+            ui_radar_init();
+            ui_set_targets();
+            last_status = 0;
+            last_debug = 0;
+        }
 
         if ((now - last_tick) >= FRAME_TICK_MS) {
             last_tick = now;
