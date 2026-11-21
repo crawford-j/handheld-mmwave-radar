@@ -9,7 +9,9 @@
  *    the device; 6 m is the radar's maximum range [LD2450 manual §2.1].
  *
  * 2. Confirm / hold: a target is shown after CONFIRM_FRAMES good readings
- *    in a row, and removed after HOLD_FRAMES missed readings in a row.
+ *    in a row (CONFIRM_NEAR_FRAMES when closer than NEAR_MM, where
+ *    reflections off the person holding or setting up the device show up),
+ *    and removed after HOLD_FRAMES missed readings in a row.
  *    This hides one-frame ghosts (reflections, slot hand-overs) and keeps a
  *    real target from flickering when the radar drops it for a frame.
  *
@@ -40,6 +42,8 @@
 
 /* ---- Tuning ---- */
 #define CONFIRM_FRAMES  2       /* ~0.18 s at 11 Hz before a target shows   */
+#define CONFIRM_NEAR_FRAMES 5   /* ~0.45 s for targets closer than NEAR_MM  */
+#define NEAR_MM         1000
 #define HOLD_FRAMES     3       /* ~0.27 s of misses before it disappears   */
 #define AB_SLOW_A       2       /* alpha = 1/4 while the prediction is good */
 #define AB_SLOW_B       4       /* beta  = 1/16                             */
@@ -162,7 +166,7 @@ static void update_slot(uint8_t n, const radar_target_t *t)
     o->x = (int16_t)(s->sx >> FP_SHIFT);
     o->y = (int16_t)(s->sy >> FP_SHIFT);
     o->dist = isqrt32((uint32_t)((int32_t)o->x * o->x) + (uint32_t)((int32_t)o->y * o->y));
-    if (s->hits >= CONFIRM_FRAMES) {
+    if (s->hits >= ((o->dist < NEAR_MM) ? CONFIRM_NEAR_FRAMES : CONFIRM_FRAMES)) {
         o->shown = 1;
     }
 
