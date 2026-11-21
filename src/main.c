@@ -76,6 +76,7 @@ int main(void)
     uint32_t rate_start  = 0;
     uint16_t rate_count0 = 0;
     uint16_t hz          = 0;
+    uint16_t draw_max    = 0;           /* longest tick since last status (ms) */
 
     for (;;) {
         uint32_t now = tick_ms();
@@ -95,8 +96,12 @@ int main(void)
 
         if ((now - last_tick) >= FRAME_TICK_MS) {
             last_tick = now;
-            ui_scan_step();
+            ui_scan_step(now);
             ui_animate();
+            uint16_t took = (uint16_t)(tick_ms() - now);
+            if (took > draw_max) {
+                draw_max = took;
+            }
         }
 
         if ((now - last_debug) >= DEBUG_MS) {
@@ -113,7 +118,8 @@ int main(void)
                 rate_start  = now;
                 rate_count0 = stats.frames_ok;
             }
-            ui_status(&stats, hz);
+            ui_status(&stats, hz, draw_max);
+            draw_max = 0;
         }
     }
 }

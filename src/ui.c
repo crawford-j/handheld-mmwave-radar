@@ -20,8 +20,10 @@
  * function, so a repair never leaves stray pixels.
  *
  * Scan animation (UI_SCAN_PULSE, default 1): a ring expanding from the apex
- * to the edge, like a sonar pulse. With UI_SCAN_PULSE = 0 a sweep line
- * bounces across the +/-60 degree cone instead.
+ * to the edge, like a sonar pulse, drawn only inside the +/-60 degree cone
+ * the radar covers. Its radius comes from the clock (PULSE_PX_PER_S), so
+ * it keeps a steady speed even if a drawing step runs long. With
+ * UI_SCAN_PULSE = 0 a sweep line bounces across the cone instead.
  *
  * Pings glide: each target has a goal (from track.c, ~11 updates/s) and a
  * drawn position that moves halfway to the goal on every animation tick, so
@@ -53,9 +55,10 @@ static const char lbl2[] PROGMEM = "4.5";
 static const char lbl3[] PROGMEM = "6";
 static const char *const range_lbl[N_RINGS + 1] PROGMEM = { lbl0, lbl1, lbl2, lbl3 };
 
-/* Pulse: grows PULSE_STEP px per animation tick from PULSE_MIN to the edge. */
-#define PULSE_MIN   6
-#define PULSE_STEP  3
+/* Pulse: radius = PULSE_MIN + elapsed * PULSE_PX_PER_S, restarting at the
+ * rim: (153 - 6) px / 70 px/s = 2.1 s per pulse. */
+#define PULSE_MIN       6
+#define PULSE_PX_PER_S  70
 
 /* Sweep (UI_SCAN_PULSE = 0): bounces inside the cone. */
 #define SWEEP_MAX   58
@@ -113,7 +116,10 @@ typedef struct {
 static ping_t pings[RADAR_TARGETS];
 static goal_t goals[RADAR_TARGETS];
 
-static int16_t pulse_r;             /* radius of the drawn pulse ring, 0 = none */
+static int16_t  pulse_r;            /* radius of the drawn pulse ring, 0 = none */
+#if UI_SCAN_PULSE
+static uint32_t pulse_t0;           /* when the current pulse started           */
+#endif
 #if !UI_SCAN_PULSE
 static int16_t sweep_deg = -SWEEP_MAX;
 static int8_t  sweep_dir = 1;
@@ -262,9 +268,12 @@ static void draw_label(int16_t x, int16_t y, const char *s, uint8_t in_flash, ui
 
 #if UI_SCAN_PULSE
 /*
- * arc_walk - the upper half of a circle of radius r around the apex
- * (midpoint circle algorithm, the four upper octants), each pixel colored
- * `color`, or fn(x, y) if fn is set. Used to draw and erase the pulse.
+ * arc_walk - the part of a circle of radius r around the apex that lies
+ * inside the +/-60 degree cone (midpoint circle algorithm over the four
+ * upper octants, keeping points with |dx|*100 <= dy*173). Each pixel is
+ * colored `color`, or fn(x, y) if fn is set. Used to draw and erase the
+ * pulse. Limiting it to the cone drops a third of the pixels (120 of 180
+ * degrees), which matters: each lone pixel is a 13-byte window write.
  */
 static void arc_walk(int16_t r, uint16_t color, gfx_color_fn fn)
 {
@@ -276,7 +285,11 @@ static void arc_walk(int16_t r, uint16_t color, gfx_color_fn fn)
         int16_t px[4] = { APEX_X + x, APEX_X - x, APEX_X + y, APEX_X - y };
         int16_t py[4] = { APEX_Y - y, APEX_Y - y, APEX_Y - x, APEX_Y - x };
         for (uint8_t k = 0; k < 4; k++) {
-            ili9341_draw_pixel(px[k], py[k], fn ? fn(px[k], py[k]) : color);
+            int16_t adx = px[k] - APEX_X;
+            if (adx < 0) adx = -adx;
+            if ((int32_t)adx * COV_DY <= (int32_t)(APEX_Y - py[k]) * COV_DX) {
+                ili9341_draw_pixel(px[k], py[k], fn ? fn(px[k], py[k]) : color);
+            }
         }
         y++;
         if (err < 0) {
@@ -627,23 +640,32 @@ static void redraw_pings_near_arc(int16_t r_old, int16_t r_new)
 /*
  * ui_scan_step - advance the scan animation by one step.
  *
- * Pulse: erase the old ring by restoring the background under each of its
- * pixels, grow the radius by PULSE_STEP (back to PULSE_MIN after the edge),
- * draw the new ring. Each ring is ~pi*r pixels, at most ~490 at the rim.
+ * Pulse: the radius follows the clock. If it has moved, erase the old ring
+ * by restoring the background under each of its pixels and draw the new
+ * one. Each ring is ~(2/3)*pi*r pixels inside the cone, ~320 at the rim.
  *
  * Sweep: erase/redraw a line from the apex, bouncing within the cone.
  */
-void ui_scan_step(void)
+void ui_scan_step(uint32_t now)
 {
 #if UI_SCAN_PULSE
+    int16_t r = PULSE_MIN + (int16_t)(((now - pulse_t0) * PULSE_PX_PER_S) / 1000UL);
+    if (pulse_r == 0 || r > R_PX - 3) {
+        pulse_t0 = now;
+        r = PULSE_MIN;
+    }
+    if (r == pulse_r) {
+        return;
+    }
     int16_t old_r = pulse_r;
     if (old_r) {
         arc_walk(old_r, 0, bg_color_at);
     }
-    pulse_r = (old_r == 0 || old_r + PULSE_STEP > R_PX - 3) ? PULSE_MIN : old_r + PULSE_STEP;
+    pulse_r = r;
     arc_walk(pulse_r, C_PULSE, 0);
     redraw_pings_near_arc(old_r, pulse_r);
 #else
+    (void)now;
     int16_t old_deg = sweep_deg;
     if (sweep_drawn) {
         gfx_line_fn(APEX_X, APEX_Y, sweep_ex, sweep_ey, bg_color_at);
@@ -722,9 +744,11 @@ void ui_debug_target(void)
 }
 
 /*
- * ui_status - debug line at the top: frame count, errors and frame rate.
+ * ui_status - debug line at the top: frame count, errors, frame rate and
+ * the longest animation tick (scan + glide) since the last refresh, in ms;
+ * red when it overran the 40 ms tick.
  */
-void ui_status(const radar_stats_t *s, uint16_t hz)
+void ui_status(const radar_stats_t *s, uint16_t hz, uint16_t draw_ms)
 {
     int16_t x = gfx_text_P(4, 2, PSTR("FR"), C_STATUS, C_BG, 1);
     x = gfx_int_pad(x, 2, s->frames_ok, 6, COLOR_WHITE, C_BG, 1);
@@ -736,5 +760,7 @@ void ui_status(const radar_stats_t *s, uint16_t hz)
     x = gfx_int_pad(x, 2, s->ovf + s->dor, 4, (s->ovf + s->dor) ? COLOR_RED : COLOR_WHITE,
                     C_BG, 1);
     x = gfx_int_pad(x, 2, hz, 4, COLOR_WHITE, C_BG, 1);
-    gfx_text_P(x, 2, PSTR("HZ"), C_STATUS, C_BG, 1);
+    x = gfx_text_P(x, 2, PSTR("HZ"), C_STATUS, C_BG, 1);
+    x = gfx_int_pad(x, 2, draw_ms, 4, draw_ms > 40 ? COLOR_RED : COLOR_WHITE, C_BG, 1);
+    gfx_text_P(x, 2, PSTR("MS"), C_STATUS, C_BG, 1);
 }

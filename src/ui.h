@@ -24,8 +24,8 @@
 void ui_radar_init(void);
 void ui_set_targets(void);
 void ui_animate(void);
-void ui_scan_step(void);
-void ui_status(const radar_stats_t *s, uint16_t hz);
+void ui_scan_step(uint32_t now);
+void ui_status(const radar_stats_t *s, uint16_t hz, uint16_t draw_ms);
 void ui_debug_target(void);
 void ui_alert_status(uint8_t active);
 
