@@ -17,6 +17,6 @@
 
 void buzzer_init(void);
 void buzzer_set_period(uint16_t period_ms);
-void buzzer_service(uint32_t now_ms);
+void buzzer_tick(void);          /* from the 1 ms tick ISR only */
 
 #endif /* BUZZER_H */

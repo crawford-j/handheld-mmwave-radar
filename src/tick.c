@@ -12,6 +12,7 @@
 #include <avr/interrupt.h>
 #include <util/atomic.h>
 #include "tick.h"
+#include "buzzer.h"
 
 static volatile uint32_t ms_count;
 
@@ -33,11 +34,13 @@ void tick_init(void)
 }
 
 /*
- * Timer0 compare match A: fires every 1 ms.
+ * Timer0 compare match A: fires every 1 ms. Also drives the buzzer's beep
+ * timing, so beeps stay regular even while the main loop is drawing.
  */
 ISR(TIMER0_COMPA_vect)
 {
     ms_count++;
+    buzzer_tick();
 }
 
 /*

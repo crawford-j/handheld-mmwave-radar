@@ -92,7 +92,6 @@ int main(void)
             ui_alert_status(alert_update());
         }
 
-        buzzer_service(now);            /* beep on/off timing */
 
         if ((now - last_tick) >= FRAME_TICK_MS) {
             last_tick = now;

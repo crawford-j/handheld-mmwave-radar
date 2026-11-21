@@ -16,11 +16,13 @@
  * OCR2B must be <= OCR2A for the match to happen; it is set equal.
  *
  * Beep cadence: buzzer_set_period(p) asks for a BEEP_ON_MS beep every p ms
- * (0 = silent). buzzer_service() is called from the main loop and switches
- * the tone on and off on time, without blocking.
+ * (0 = silent). buzzer_tick() runs inside the 1 ms Timer0 interrupt and
+ * switches the tone on and off, so beeps keep exact timing even while the
+ * main loop is busy drawing (a pulse step can take ~50 ms).
  */
 
 #include "board.h"
+#include <util/atomic.h>
 #include "buzzer.h"
 
 #define BUZZER_DDR    DDRD
@@ -34,9 +36,12 @@
 #error "BUZZER_HZ out of range for Timer2 with /32 prescaler"
 #endif
 
-static uint16_t period_ms;           /* 0 = silent                    */
-static uint32_t beep_start;          /* when the current cycle began  */
-static uint8_t  tone_on;
+/* Shared with the Timer0 ISR, so volatile; the 16-bit period is written
+ * with interrupts off. */
+static volatile uint16_t period_ms;  /* 0 = silent                       */
+static volatile uint8_t  restart;    /* start a new cycle on the next tick */
+static uint16_t phase_ms;            /* ms into the current cycle (ISR only) */
+static volatile uint8_t  tone_on;
 
 /*
  * tone_start - connect OC2B to the timer so the square wave reaches the pin.
@@ -77,6 +82,7 @@ void buzzer_init(void)
     TIMSK2 = 0;                          /* no Timer2 interrupts needed        */
 
     period_ms = 0;
+    restart = 0;
     tone_on = 0;
 }
 
@@ -87,33 +93,33 @@ void buzzer_init(void)
  */
 void buzzer_set_period(uint16_t p)
 {
-    if (p != 0 && period_ms == 0) {
-        beep_start = 0;                  /* force a new cycle on the next service */
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+        if (p != 0 && period_ms == 0) {
+            restart = 1;                 /* beep right away on the next tick */
+        }
         period_ms = p;
-        return;
-    }
-    period_ms = p;
-    if (p == 0 && tone_on) {
-        tone_stop();
+        if (p == 0 && tone_on) {
+            tone_stop();
+        }
     }
 }
 
 /*
- * buzzer_service - run the beep cadence; call often from the main loop.
- *   start of cycle .. +BEEP_ON_MS : tone on
- *   rest of the cycle             : tone off
+ * buzzer_tick - run the beep cadence. Called every 1 ms from the Timer0
+ * compare interrupt (tick.c), so it must stay short.
+ *   phase 0 .. BEEP_ON_MS-1 : tone on
+ *   rest of the period      : tone off
  */
-void buzzer_service(uint32_t now_ms)
+void buzzer_tick(void)
 {
     if (period_ms == 0) {
         return;
     }
-
-    uint32_t t = now_ms - beep_start;
-    if (beep_start == 0 || t >= period_ms) {
-        beep_start = now_ms ? now_ms : 1;    /* 0 is reserved for "restart" */
+    if (restart || ++phase_ms >= period_ms) {
+        restart = 0;
+        phase_ms = 0;
         tone_start();
-    } else if (tone_on && t >= BEEP_ON_MS) {
+    } else if (tone_on && phase_ms >= BEEP_ON_MS) {
         tone_stop();
     }
 }
