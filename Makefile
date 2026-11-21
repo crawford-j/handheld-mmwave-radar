@@ -17,10 +17,13 @@ SIZE    := avr-size
 RADAR_BAUD ?= 250000UL
 # 1 = build the one-time radar baud switch instead, to RADAR_SETUP_BAUD
 RADAR_SETUP ?= 0
+# 1 = feed synthetic targets instead of the radar (UI testing)
+DEMO ?= 0
 RADAR_SETUP_BAUD ?= 38400UL
 
 CFLAGS  := -mmcu=$(MCU) -DF_CPU=$(F_CPU) -DRADAR_BAUD=$(RADAR_BAUD) \
            -DRADAR_SETUP=$(RADAR_SETUP) -DRADAR_SETUP_BAUD=$(RADAR_SETUP_BAUD) \
+           -DDEMO=$(DEMO) \
            -Os -std=gnu11 \
            -Wall -Wextra -ffunction-sections -fdata-sections -MMD -MP
 LDFLAGS := -mmcu=$(MCU) -Wl,--gc-sections

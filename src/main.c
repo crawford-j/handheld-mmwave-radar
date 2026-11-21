@@ -35,6 +35,15 @@
 #include "radar_setup.h"
 #endif
 
+/* `make DEMO=1` replaces the radar with three synthetic moving targets
+ * (demo.c), to check the display, filter and alert without the radar. */
+#ifndef DEMO
+#define DEMO 0
+#endif
+#if DEMO
+#include "demo.h"
+#endif
+
 #define FRAME_TICK_MS   30      /* scan step + ping glide, ~33 per second */
 #define STATUS_MS       500     /* debug line refresh                          */
 #define DEBUG_MS        200     /* raw vs filtered readout refresh             */
@@ -84,10 +93,17 @@ int main(void)
         /* Every complete frame goes through the filter (about 11 per second);
          * the filtered targets become the pings' new goals. */
         uint8_t have_new = 0;
+#if DEMO
+        if (demo_frame(now, &frame)) {
+            track_update(&frame);
+            have_new = 1;
+        }
+#else
         while (radar_poll(&frame)) {
             track_update(&frame);
             have_new = 1;
         }
+#endif
         if (have_new) {
             ui_set_targets();
             ui_alert_status(alert_update());
