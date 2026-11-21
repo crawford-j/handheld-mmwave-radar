@@ -279,6 +279,36 @@ Distance is measured with a Manhattan distance |dx| + |dy| instead of a true
 distance. It's cheap (no square root), and for thresholds like these
 the ≤ 41% overestimate on diagonals doesn't matter.
 
+**Revision: EMA → alpha-beta filter (2026-11-21).** On hardware, with a
+RAW-vs-filtered readout for target 1 on screen, slowly turning the device
+showed RAW x moving steadily while the filtered x trailed behind. Any
+plain average lags a target that keeps moving in one direction: a slow
+turn never produces residuals above 250 mm, so the EMA stayed in its heavy
+α = 1/4 mode the whole time. The replacement keeps a velocity estimate
+per slot:
+
+```
+pred = s + v            r = raw − pred
+s    = pred + α·r       v = v + β·r
+```
+
+- Gains: α = 1/4, β = 1/16 while |r| ≤ 250 mm; α = 1/2, β = 1/8 above that.
+  All are shifts.
+- Stability: 0 < α < 1, β > 0, 4 − 2α − β > 0, true for both pairs.
+- Velocity is clamped to 300 mm/frame (~3.3 m/s), so one bad reading can't
+  fling a target.
+- Velocity is zeroed on a missed frame, so a returning target doesn't lurch.
+
+Simulated with the firmware's own integer math (Python, same shifts):
+
+| | Lag on a 30 mm/frame ramp (slow turn) | Std on a still target, raw ±150 mm (std 89) |
+|---|---|---|
+| Adaptive EMA | 90 mm | 35 mm |
+| Alpha-beta | 2 mm | 46 mm |
+
+The trade is slightly more jitter at rest (still half of raw, further
+softened by the on-screen glide) for no lag at constant speed.
+
 **Direction arrows:** the last 5 smoothed positions are kept per target.
 Movement from the oldest to the newest (4 frames ≈ 0.36 s) is scaled to a
 14 px arrow, but only if the target moved ≥ 150 mm (Manhattan) in that
