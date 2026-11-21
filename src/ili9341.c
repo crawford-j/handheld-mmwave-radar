@@ -57,7 +57,7 @@
 static void write_cmd(uint8_t cmd)
 {
     DC_CMD();
-    spi_xfer(cmd);
+    spi_write(cmd);
     DC_DATA();          /* following bytes are parameters/data */
 }
 
@@ -69,7 +69,7 @@ static void write_cmd_1(uint8_t cmd, uint8_t param)
 {
     CS_LOW();
     write_cmd(cmd);
-    spi_xfer(param);
+    spi_write(param);
     CS_HIGH();
 }
 
@@ -140,16 +140,16 @@ void ili9341_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 {
     CS_LOW();
     write_cmd(CMD_CASET);
-    spi_xfer(x0 >> 8);
-    spi_xfer(x0 & 0xFF);
-    spi_xfer(x1 >> 8);
-    spi_xfer(x1 & 0xFF);
+    spi_write(x0 >> 8);
+    spi_write(x0 & 0xFF);
+    spi_write(x1 >> 8);
+    spi_write(x1 & 0xFF);
 
     write_cmd(CMD_PASET);
-    spi_xfer(y0 >> 8);
-    spi_xfer(y0 & 0xFF);
-    spi_xfer(y1 >> 8);
-    spi_xfer(y1 & 0xFF);
+    spi_write(y0 >> 8);
+    spi_write(y0 & 0xFF);
+    spi_write(y1 >> 8);
+    spi_write(y1 & 0xFF);
 
     /* Memory Write: following data fills the window left-to-right,
      * top-to-bottom [ILI9341 §8.2.22]. */
@@ -166,8 +166,8 @@ void ili9341_push_color(uint16_t color, uint32_t count)
     uint8_t lo = color & 0xFF;
 
     while (count--) {
-        spi_xfer(hi);
-        spi_xfer(lo);
+        spi_write(hi);
+        spi_write(lo);
     }
 }
 
