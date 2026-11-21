@@ -35,7 +35,7 @@
 #include "radar_setup.h"
 #endif
 
-#define FRAME_TICK_MS   40      /* sweep step + ping glide: 2 deg / 40 ms = 50 deg/s */
+#define FRAME_TICK_MS   40      /* scan step + ping glide */
 #define STATUS_MS       500     /* debug line refresh                          */
 #define DEBUG_MS        200     /* raw vs filtered readout refresh             */
 #define RATE_WINDOW_MS  1000    /* frame-rate measurement window               */
@@ -95,7 +95,7 @@ int main(void)
 
         if ((now - last_tick) >= FRAME_TICK_MS) {
             last_tick = now;
-            ui_sweep_step();
+            ui_scan_step();
             ui_animate();
         }
 
