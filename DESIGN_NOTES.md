@@ -72,6 +72,17 @@ different radar unit's oscillator.
 
 Chosen run-time baud: 38400 (radar index 0x0003).
 
+**Switch performed 2026-11-21** with the `RADAR_SETUP=1` build. Enable config,
+set baud and restart were each ACKed on the first run, and data frames
+were confirmed at 38400.
+
+**Measured at 38400:** 1000 frames with 0 framing errors, 0 bad tails,
+0 overruns and 0 drops, the same as at 250000. However, the frame rate read
+**6 Hz**, versus 11 Hz at 250000. All AVR-side counters are zero, so no
+frames are being lost on the AVR side. The radar itself is sending fewer
+frames. _Under investigation:_ check whether the rate depends on targets
+being present, or on the radar's baud setting.
+
 ```
 U2X0=0, UBRR=25 -> 16e6/(16*26) = 38461.5   error = +0.16%   [Table 20-7]
 U2X0=1, UBRR=51 -> 16e6/(8*52)  = 38461.5   error = +0.16%
