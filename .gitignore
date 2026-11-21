@@ -1,0 +1,21 @@
+# Local notes
+claude-code-prompt.md
+.claude/
+
+# Build output
+build/
+*.o
+*.d
+*.elf
+*.hex
+*.eep
+*.lss
+*.map
+*.srec
+
+# Microchip Studio
+Debug/
+Release/
+.vs/
+*.atsuo
+*.cproj.user
