@@ -94,6 +94,13 @@ static void update_slot(uint8_t n, const radar_target_t *t)
         good = (d >= MIN_RANGE_MM && d <= MAX_RANGE_MM);
     }
 
+    /* Keep the unfiltered reading for the debug readout. */
+    o->raw_ok = good;
+    if (good) {
+        o->raw_x = t->x;
+        o->raw_y = t->y;
+    }
+
     /* 2. Miss: hold the last position for a few frames, then drop it. */
     if (!good) {
         if (s->hits && ++s->misses >= HOLD_FRAMES) {

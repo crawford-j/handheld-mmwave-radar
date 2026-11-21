@@ -19,6 +19,8 @@ typedef struct {
     uint16_t dist;      /* smoothed distance sqrt(x^2 + y^2), mm       */
     int16_t  mx, my;    /* movement over the history window, mm; 0,0 if
                            it moved less than ARROW_MIN_MM (no arrow)   */
+    uint8_t  raw_ok;    /* last frame had a reading in range (debug)   */
+    int16_t  raw_x, raw_y;  /* that unfiltered reading, mm (debug)     */
 } track_t;
 
 void           track_update(const radar_frame_t *fr);
