@@ -3,10 +3,12 @@
  *
  * Target: ATmega328P @ 16 MHz (Arduino Uno R3), avr-gcc, no Arduino core.
  *
- * Milestone 3: radar view. Range rings, a sweep line bouncing across the
- * +/-60 degree fan, and a ping with a distance label for each target, plus
- * a debug status line with the link counters. (The milestone 2 raw-number
- * screen is in the git history.)
+ * Milestone 4: smoothing and direction arrows. Radar frames go through
+ * track.c (range gate, confirm/hold, adaptive EMA, motion history); the
+ * radar view glides each ping toward its filtered position and draws an
+ * arrow showing which way the target is moving.
+ * (Milestone 2's raw-number screen and milestone 3's unfiltered view are in
+ * the git history.)
  */
 
 #include "board.h"
@@ -15,6 +17,7 @@
 #include "ili9341.h"
 #include "tick.h"
 #include "uart_radar.h"
+#include "track.h"
 #include "ui.h"
 
 /* `make RADAR_SETUP=1` builds the one-time radar baud switch instead of the
@@ -26,13 +29,14 @@
 #include "radar_setup.h"
 #endif
 
-#define SWEEP_MS        40      /* sweep step period: 2 deg / 40 ms = 50 deg/s */
+#define FRAME_TICK_MS   40      /* sweep step + ping glide: 2 deg / 40 ms = 50 deg/s */
 #define STATUS_MS       500     /* debug line refresh                          */
 #define RATE_WINDOW_MS  1000    /* frame-rate measurement window               */
 
 /*
- * main - init, then loop: parse radar bytes, update pings on each new frame,
- * step the sweep and refresh the status line on timers.
+ * main - init, then loop: parse radar bytes and filter each new frame,
+ * then on a 40 ms tick step the sweep and glide the pings; refresh the
+ * status line every 500 ms.
  *
  * Every task is short (a sweep step is at most ~30 ms of SPI traffic), and
  * the 128-byte ring buffer holds ~0.4 s of radar data, so no bytes are lost
@@ -58,7 +62,7 @@ int main(void)
     radar_init();
     sei();                              /* enable interrupts (tick + USART RX) */
 
-    uint32_t last_sweep  = 0;
+    uint32_t last_tick   = 0;
     uint32_t last_status = 0;
     uint32_t rate_start  = 0;
     uint16_t rate_count0 = 0;
@@ -67,18 +71,21 @@ int main(void)
     for (;;) {
         uint32_t now = tick_ms();
 
-        /* Every complete frame updates the pings (about 5 per second). */
+        /* Every complete frame goes through the filter (about 11 per second);
+         * the filtered targets become the pings' new goals. */
         uint8_t have_new = 0;
         while (radar_poll(&frame)) {
+            track_update(&frame);
             have_new = 1;
         }
         if (have_new) {
-            ui_radar_targets(&frame);
+            ui_set_targets();
         }
 
-        if ((now - last_sweep) >= SWEEP_MS) {
-            last_sweep = now;
+        if ((now - last_tick) >= FRAME_TICK_MS) {
+            last_tick = now;
             ui_sweep_step();
+            ui_animate();
         }
 
         if ((now - last_status) >= STATUS_MS) {
