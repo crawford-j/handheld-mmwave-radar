@@ -12,6 +12,13 @@
  * 250 mm is several times the filtered position noise (~50 mm std on a
  * still target, see DESIGN_NOTES), so the edge cannot flip it back and forth.
  *
+ * False triggers while setting the device up (reflections off the person
+ * standing right next to it) are suppressed two ways:
+ *   - arming delay: no alarm for ALERT_ARM_MS after power-up
+ *   - entry debounce: the nearest target must be inside R for
+ *     ALERT_ENTER_FRAMES frames in a row (~0.36 s) before the alarm starts;
+ *     a real person walking in still triggers almost at once.
+ *
  * Beep rate: linear in distance, from BEEP_FAR_MS at the zone edge down to
  * BEEP_NEAR_MS at ALERT_SOLID_MM (1.0 m):
  *   period = NEAR + (d - SOLID) * (FAR - NEAR) / (R - SOLID), clamped
@@ -31,6 +38,7 @@ static uint16_t radius_mm = ALERT_RADIUS_DEFAULT_MM;
 static uint8_t  muted;
 static uint8_t  active;
 static uint16_t nearest_mm;
+static uint8_t  inside_count;       /* consecutive frames inside R */
 
 void alert_set_radius(uint16_t mm)
 {
@@ -86,9 +94,10 @@ static uint16_t beep_period(uint16_t d)
 
 /*
  * alert_update - recompute the alert from the current targets and set the
- * buzzer cadence. Returns 1 while the alert is active.
+ * buzzer cadence. Called once per radar frame. Returns ALERT_ARMING during
+ * the power-up delay, else ALERT_ON / ALERT_IDLE.
  */
-uint8_t alert_update(void)
+uint8_t alert_update(uint32_t now_ms)
 {
     nearest_mm = 0;
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
@@ -98,12 +107,27 @@ uint8_t alert_update(void)
         }
     }
 
+    uint8_t inside = (nearest_mm != 0 && nearest_mm < radius_mm);
+    if (inside) {
+        if (inside_count < 255) {
+            inside_count++;
+        }
+    } else {
+        inside_count = 0;
+    }
+
+    if (now_ms < ALERT_ARM_MS) {        /* tick starts at 0 at power-up */
+        active = 0;
+        buzzer_set_period(0);
+        return ALERT_ARMING;
+    }
+
     if (!active) {
-        active = (nearest_mm != 0 && nearest_mm < radius_mm);
+        active = (inside_count >= ALERT_ENTER_FRAMES);
     } else if (nearest_mm == 0 || nearest_mm > radius_mm + ALERT_HYST_MM) {
         active = 0;
     }
 
     buzzer_set_period((active && !muted) ? beep_period(nearest_mm) : 0);
-    return active;
+    return active ? ALERT_ON : ALERT_IDLE;
 }

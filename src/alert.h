@@ -11,13 +11,20 @@
 #define ALERT_RADIUS_DEFAULT_MM  1500
 #define ALERT_HYST_MM            250     /* exit only beyond radius + this */
 #define ALERT_SOLID_MM           1000    /* closer than this: continuous tone */
+#define ALERT_ARM_MS             5000    /* no alarm this long after power-up */
+#define ALERT_ENTER_FRAMES       4       /* frames inside the zone to trigger */
+
+/* alert_update() result */
+#define ALERT_IDLE    0
+#define ALERT_ON      1
+#define ALERT_ARMING  2
 
 void     alert_set_radius(uint16_t mm);
 uint16_t alert_get_radius(void);
 void     alert_set_mute(uint8_t mute);
 uint8_t  alert_get_mute(void);
 
-uint8_t  alert_update(void);              /* returns 1 if the alert is active */
+uint8_t  alert_update(uint32_t now_ms);   /* returns ALERT_IDLE/ON/ARMING     */
 uint8_t  alert_active(void);
 uint16_t alert_nearest_mm(void);          /* nearest shown target, 0 if none  */
 
