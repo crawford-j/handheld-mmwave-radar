@@ -8,7 +8,7 @@
  * stands right at the edge and the reading wobbles by a few cm:
  *   off -> on  when nearest < R
  *   on  -> off when nearest > R + ALERT_HYST_MM, or no target is left
- * With R = 2.0 m: turns on inside 2.00 m, turns off beyond 2.25 m.
+ * With R = 1.5 m: turns on inside 1.50 m, turns off beyond 1.75 m.
  * 250 mm is several times the filtered position noise (~50 mm std on a
  * still target, see DESIGN_NOTES), so the edge cannot flip it back and forth.
  *

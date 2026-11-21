@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 
-#define ALERT_RADIUS_DEFAULT_MM  2000
+#define ALERT_RADIUS_DEFAULT_MM  1500
 #define ALERT_HYST_MM            250     /* exit only beyond radius + this */
 #define ALERT_SOLID_MM           1000    /* closer than this: continuous tone */
 
