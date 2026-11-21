@@ -91,7 +91,17 @@ So between 38400 and 57600 the frame rate doesn't depend on the baud
 rate, yet it was 11 Hz at the factory 256000. That leaves two explanations:
 either the radar's firmware only sends at full rate at its native baud,
 or something else changed when the radar was first reconfigured and
-restarted. _Next test:_ restore 256000 and see whether 11 Hz comes back.
+restarted. Restoring 256000 would show which one it is.
+
+**Decision (2026-11-21): stay at 57600, about 5 Hz.** Frame rate doesn't
+affect accuracy: every frame carries the same ~320 mm gate resolution.
+Fewer frames only means coarser motion on screen. A walking person
+(1.4 m/s) moves about 28 cm, roughly 9 px, between frames at 5 Hz, versus
+about 14 cm at 11 Hz. The reliable link (−0.79%) was judged worth more
+than the extra updates, which would need the marginal −2.34% link. To
+make up for the lower rate, the display interpolates each ping toward its
+new position between frames (milestone 4). The 256000 retest is left as
+optional extra data for the report.
 
 ```
 U2X0=0, UBRR=25 -> 16e6/(16*26) = 38461.5   error = +0.16%   [Table 20-7]
