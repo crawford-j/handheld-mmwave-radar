@@ -8,11 +8,11 @@
 
 #include <stdint.h>
 
-/* Link speed. The radar was switched from its factory 256000 to 38400 with
+/* Link speed. The radar was switched from its factory 256000 to 57600 with
  * the RADAR_SETUP build (2026-11-21). 250000 still talks to a
  * factory-default radar (-2.34 %). */
 #ifndef RADAR_BAUD
-#define RADAR_BAUD 38400UL
+#define RADAR_BAUD 57600UL
 #endif
 
 #define RADAR_TARGETS       3
