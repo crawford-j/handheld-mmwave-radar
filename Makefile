@@ -13,7 +13,10 @@ CC      := avr-gcc
 OBJCOPY := avr-objcopy
 SIZE    := avr-size
 
-CFLAGS  := -mmcu=$(MCU) -DF_CPU=$(F_CPU) -Os -std=gnu11 \
+# Radar link speed: 250000 (factory radar) or 38400 (after baud switch)
+RADAR_BAUD ?= 250000UL
+
+CFLAGS  := -mmcu=$(MCU) -DF_CPU=$(F_CPU) -DRADAR_BAUD=$(RADAR_BAUD) -Os -std=gnu11 \
            -Wall -Wextra -ffunction-sections -fdata-sections -MMD -MP
 LDFLAGS := -mmcu=$(MCU) -Wl,--gc-sections
 
