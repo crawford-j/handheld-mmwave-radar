@@ -25,6 +25,7 @@
 #include "font5x7.h"
 #include "trig.h"
 #include "track.h"
+#include "alert.h"
 #include "ui.h"
 
 /* ---- Geometry ---- */
@@ -61,6 +62,7 @@ static const char *const ring_lbl[N_RINGS] PROGMEM = { ring_lbl0, ring_lbl1, rin
 #define C_SWEEP     RGB565(80, 255, 80)
 #define C_LABEL     RGB565(0, 160, 0)
 #define C_STATUS    COLOR_GRAY
+#define C_ALERT     RGB565(200, 0, 0)    /* alert-zone ring */
 
 static const uint16_t ping_color[RADAR_TARGETS] = { COLOR_YELLOW, COLOR_CYAN, COLOR_MAGENTA };
 
@@ -99,6 +101,9 @@ static int8_t  sweep_dir = 1;
 static int16_t sweep_ex, sweep_ey;  /* end point of the line on screen */
 static uint8_t sweep_drawn;
 
+static int16_t alert_r_px;          /* alert-zone ring radius, px (0 = none) */
+static uint8_t alert_shown = 0xFF;   /* ALERT text state on screen (0xFF = unknown) */
+
 /*
  * bg_color_at - the background color that belongs at screen pixel (x, y).
  *
@@ -110,6 +115,8 @@ static uint8_t sweep_drawn;
  *   outside the edge (e > 78) -> black
  *   ring of radius r: pixels with r - 0.5 <= d <= r + 0.5, which is
  *     |d^2 - r^2| <= r to within a quarter pixel
+ *   alert-zone ring: same test with the alert radius; checked first so it
+ *     stays red where it lands on a range ring
  *   center line: dx == 0
  */
 static uint16_t bg_color_at(int16_t x, int16_t y)
@@ -132,6 +139,13 @@ static uint16_t bg_color_at(int16_t x, int16_t y)
     }
     if (e >= -(EDGE_DX / 2)) {
         return C_EDGE;                  /* on the fan edge */
+    }
+
+    if (alert_r_px) {
+        int32_t r = alert_r_px;
+        if (d2 >= r * r - r && d2 <= r * r + r) {
+            return C_ALERT;
+        }
     }
 
     for (uint8_t i = 0; i < N_RINGS; i++) {
@@ -406,6 +420,10 @@ static int16_t glide(int16_t cur, int16_t goal)
  */
 void ui_radar_init(void)
 {
+    /* Alert ring radius: mm -> px at 180 px per 6000 mm. */
+    alert_r_px = (int16_t)(((int32_t)alert_get_radius() * R_PX) / RANGE_MM);
+    alert_shown = 0xFF;
+
     gfx_fill_screen(C_BG);
     restore_rect(APEX_X - EDGE_DX, APEX_Y - R_PX, 2 * EDGE_DX + 1, R_PX + 1);
     for (uint8_t i = 0; i < N_RINGS; i++) {
@@ -609,6 +627,29 @@ void ui_debug_target(void)
     } else {
         gfx_text_P(x, y_flt, PSTR("     -"), COLOR_GRAY, C_BG, 2);
     }
+}
+
+/*
+ * ui_alert_status - bottom line: zone radius and mute on the left, a red
+ * "ALERT" on the right while the alert is active. Redrawn only on change.
+ */
+void ui_alert_status(uint8_t active)
+{
+    if (active == alert_shown) {
+        return;
+    }
+    if (alert_shown == 0xFF) {          /* first call: static part */
+        char buf[LABEL_MAX + 1];
+        int16_t x = gfx_text_P(4, 231, PSTR("ZONE "), C_STATUS, C_BG, 1);
+        format_meters(buf, alert_get_radius());
+        x = gfx_text(x, 231, buf, C_ALERT, C_BG, 1);
+        if (alert_get_mute()) {
+            gfx_text_P(x, 231, PSTR("  MUTED"), C_STATUS, C_BG, 1);
+        }
+    }
+    gfx_text_P(LCD_WIDTH - 5 * GFX_CHAR_W - 4, 231, active ? PSTR("ALERT") : PSTR("     "),
+               COLOR_WHITE, active ? COLOR_RED : C_BG, 1);
+    alert_shown = active;
 }
 
 /*
