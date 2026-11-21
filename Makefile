@@ -18,8 +18,11 @@ CFLAGS  := -mmcu=$(MCU) -DF_CPU=$(F_CPU) -Os -std=gnu11 \
 LDFLAGS := -mmcu=$(MCU) -Wl,--gc-sections
 
 # avrdude settings for the Uno bootloader
-PORT    ?= COM3
-BAUD    ?= 115200
+# (defaults to the copy bundled with the Arduino IDE 1.x on Windows)
+AVR_TOOLS ?= C:/Program Files (x86)/Arduino/hardware/tools/avr
+AVRDUDE   ?= "$(AVR_TOOLS)/bin/avrdude.exe" -C "$(AVR_TOOLS)/etc/avrdude.conf"
+PORT      ?= COM3
+BAUD      ?= 115200
 
 .PHONY: all clean size flash
 
@@ -41,7 +44,7 @@ size: $(BUILD)/$(TARGET).elf
 	$(SIZE) --mcu=$(MCU) -C $< 2>/dev/null || $(SIZE) $<
 
 flash: $(BUILD)/$(TARGET).hex
-	avrdude -p $(MCU) -c arduino -P $(PORT) -b $(BAUD) -U flash:w:$<:i
+	$(AVRDUDE) -p $(MCU) -c arduino -P $(PORT) -b $(BAUD) -U flash:w:$<:i
 
 clean:
 	rm -rf $(BUILD)
