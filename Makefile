@@ -54,7 +54,11 @@ $(BUILD)/$(TARGET).hex: $(BUILD)/$(TARGET).elf
 size: $(BUILD)/$(TARGET).elf
 	$(SIZE) --mcu=$(MCU) -C $< 2>/dev/null || $(SIZE) $<
 
+# Retries once: the first upload sometimes fails verification (likely D1 is
+# loaded by the level shifter feeding the radar's RX); a second pass has
+# always verified.
 flash: $(BUILD)/$(TARGET).hex
+	$(AVRDUDE) -p $(MCU) -c arduino -P $(PORT) -b $(BAUD) -U flash:w:$<:i || \
 	$(AVRDUDE) -p $(MCU) -c arduino -P $(PORT) -b $(BAUD) -U flash:w:$<:i
 
 clean:
