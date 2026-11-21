@@ -573,6 +573,33 @@ void ui_sweep_step(void)
 }
 
 /*
+ * ui_debug_target - top-right readout of target 1: the radar's raw X/Y next
+ * to the filtered X/Y (mm), to see whether lag comes from the radar or the
+ * filter. Dashes when there is no reading / no confirmed target.
+ */
+void ui_debug_target(void)
+{
+    const track_t *t = track_get(0);
+    const int16_t x0 = 196;
+
+    int16_t x = gfx_text_P(x0, 14, PSTR("RAW"), C_STATUS, C_BG, 1);
+    if (t->raw_ok) {
+        x = gfx_int_pad(x, 14, t->raw_x, 6, COLOR_WHITE, C_BG, 1);
+        gfx_int_pad(x, 14, t->raw_y, 6, COLOR_WHITE, C_BG, 1);
+    } else {
+        gfx_text_P(x, 14, PSTR("     -     -"), C_STATUS, C_BG, 1);
+    }
+
+    x = gfx_text_P(x0, 24, PSTR("FLT"), C_STATUS, C_BG, 1);
+    if (t->shown) {
+        x = gfx_int_pad(x, 24, t->x, 6, COLOR_YELLOW, C_BG, 1);
+        gfx_int_pad(x, 24, t->y, 6, COLOR_YELLOW, C_BG, 1);
+    } else {
+        gfx_text_P(x, 24, PSTR("     -     -"), C_STATUS, C_BG, 1);
+    }
+}
+
+/*
  * ui_status - debug line at the top: frame count, errors and frame rate.
  */
 void ui_status(const radar_stats_t *s, uint16_t hz)

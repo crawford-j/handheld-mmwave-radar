@@ -20,5 +20,6 @@ void ui_set_targets(void);
 void ui_animate(void);
 void ui_sweep_step(void);
 void ui_status(const radar_stats_t *s, uint16_t hz);
+void ui_debug_target(void);
 
 #endif /* UI_H */

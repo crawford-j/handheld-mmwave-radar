@@ -31,6 +31,7 @@
 
 #define FRAME_TICK_MS   40      /* sweep step + ping glide: 2 deg / 40 ms = 50 deg/s */
 #define STATUS_MS       500     /* debug line refresh                          */
+#define DEBUG_MS        200     /* raw vs filtered readout refresh             */
 #define RATE_WINDOW_MS  1000    /* frame-rate measurement window               */
 
 /*
@@ -64,6 +65,7 @@ int main(void)
 
     uint32_t last_tick   = 0;
     uint32_t last_status = 0;
+    uint32_t last_debug  = 0;
     uint32_t rate_start  = 0;
     uint16_t rate_count0 = 0;
     uint16_t hz          = 0;
@@ -86,6 +88,11 @@ int main(void)
             last_tick = now;
             ui_sweep_step();
             ui_animate();
+        }
+
+        if ((now - last_debug) >= DEBUG_MS) {
+            last_debug = now;
+            ui_debug_target();
         }
 
         if ((now - last_status) >= STATUS_MS) {
