@@ -340,6 +340,14 @@ the zone ring and ALERT text still work.
 Tested on hardware: beeps start crossing 1.5 m, speed up approaching
 0.5 m, and stop past ~1.75 m with no chatter at the edge.
 
+**Revised after testing (2026-11-21):** the default radius was raised to
+**2.0 m** (exit at 2.25 m), and a **continuous tone below 1.0 m**
+(`ALERT_SOLID_MM`) was added at the user's request. The beep period now
+runs linearly from 800 ms at R down to 100 ms at 1.0 m:
+`period = 100 + (d − 1000)·700/(R − 1000)`. The buzzer's
+`BUZZER_SOLID` mode just keeps OC2B connected. Leaving solid mode restarts
+the beep cycle, so the change is audible straight away.
+
 ## Buzzer tone (Timer2)
 
 A passive buzzer needs an AC drive at audio frequency. Timer2 makes it in
