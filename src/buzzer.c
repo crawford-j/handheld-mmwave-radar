@@ -16,7 +16,7 @@
  * OCR2B must be <= OCR2A for the match to happen; it is set equal.
  *
  * Beep cadence: buzzer_set_period(p) asks for a BEEP_ON_MS beep every p ms
- * (0 = silent). buzzer_tick() runs inside the 1 ms Timer0 interrupt and
+ * (0 = silent, BUZZER_SOLID = continuous tone). buzzer_tick() runs inside the 1 ms Timer0 interrupt and
  * switches the tone on and off, so beeps keep exact timing even while the
  * main loop is busy drawing (a pulse step can take ~50 ms).
  */
@@ -87,14 +87,15 @@ void buzzer_init(void)
 }
 
 /*
- * buzzer_set_period - beep once every `p` ms; 0 stops beeping.
- * A change takes effect at the next cycle, except that going from silent
- * to beeping starts a beep straight away.
+ * buzzer_set_period - beep once every `p` ms; 0 stops beeping;
+ * BUZZER_SOLID holds the tone on. A change takes effect at the next cycle,
+ * except that starting from silent, or leaving the solid tone, starts a
+ * fresh cycle (beep right away).
  */
 void buzzer_set_period(uint16_t p)
 {
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-        if (p != 0 && period_ms == 0) {
+        if (p != 0 && (period_ms == 0 || period_ms == BUZZER_SOLID)) {
             restart = 1;                 /* beep right away on the next tick */
         }
         period_ms = p;
@@ -113,6 +114,12 @@ void buzzer_set_period(uint16_t p)
 void buzzer_tick(void)
 {
     if (period_ms == 0) {
+        return;
+    }
+    if (period_ms == BUZZER_SOLID) {     /* continuous tone */
+        if (!tone_on) {
+            tone_start();
+        }
         return;
     }
     if (restart || ++phase_ms >= period_ms) {
