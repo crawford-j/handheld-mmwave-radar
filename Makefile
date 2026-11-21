@@ -14,7 +14,7 @@ OBJCOPY := avr-objcopy
 SIZE    := avr-size
 
 # Radar link speed: 250000 (factory radar) or 38400 (after baud switch)
-RADAR_BAUD ?= 250000UL
+RADAR_BAUD ?= 38400UL
 # 1 = build the one-time radar baud switch (256000 -> 38400) instead
 RADAR_SETUP ?= 0
 

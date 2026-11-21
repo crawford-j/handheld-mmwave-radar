@@ -8,10 +8,11 @@
 
 #include <stdint.h>
 
-/* Link speed. 250000 talks to a factory-default radar (256000, -2.34 %);
- * 38400 is the target rate after the one-time baud switch. */
+/* Link speed. The radar was switched from its factory 256000 to 38400 with
+ * the RADAR_SETUP build (2026-11-21). 250000 still talks to a
+ * factory-default radar (-2.34 %). */
 #ifndef RADAR_BAUD
-#define RADAR_BAUD 250000UL
+#define RADAR_BAUD 38400UL
 #endif
 
 #define RADAR_TARGETS       3
