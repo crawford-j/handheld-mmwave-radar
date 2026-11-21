@@ -415,6 +415,18 @@ Related notes from the same manual (§7.1, p. 15):
   noisier. This is a known limitation of the design and part of the reason
   for the tracking filter.
 
+### Software screen dimming (removed)
+
+To make recording in a dark room easier, the D2 button was set to cycle a
+software brightness (100/55/30/15 %): every RGB565 color was scaled per
+channel in `ili9341_push_color()`. It worked, but it didn't help. The glare
+comes from the **backlight**, which is hard-wired to 5 V through 100 Ω and
+lights the whole panel no matter what is drawn, so LCD black still glows.
+The feature was removed. Real dimming needs hardware: either a larger
+series resistor (permanently dimmer), or a transistor switching the
+backlight from a free PWM-capable pin (D5/D6). The debounced button driver
+(`button.c`) was kept for later use.
+
 ### Testing on dogs
 
 Early tracking tests used the family dogs. They're small, low (near the
