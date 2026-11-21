@@ -224,9 +224,67 @@ silently switch the SPI back to slave mode [M328P §19.3.2]. Touch CS (PD7)
 is driven high before any SPI traffic, so the XPT2046 never interprets
 display data as commands.
 
-## Target smoothing
+## Radar view (milestone 3)
 
-_TBD_
+- **Geometry:** a 120° fan (±60°, the radar's coverage) with its apex at
+  (160, 230) and a 180 px radius for 6 m, i.e. 33.3 mm/px. The fan edge ends
+  at 180·sin 60° = 156 px sideways and 180·cos 60° = 90 px up, so the fan
+  fills x = 4…316 and y = 50…230.
+- **Rings:** every 1.5 m (45 px).
+- **Background as a function:** `bg_color_at(x, y)` decides from geometry
+  alone whether a pixel is a ring (|d² − r²| ≤ r), a fan edge
+  (|dx·90 − dy·156| ≤ 78, one pixel per column) or the center line. The
+  same function draws the background once and repairs it wherever a ping,
+  label, arrow or the sweep line has been. Repairs can never disagree with
+  the original drawing, and no framebuffer is needed.
+- **Labels:** drawn "transparent" by streaming bg_color_at() for the
+  non-glyph pixels, so the rings stay visible behind text.
+- **Sweep:** a line bouncing between ±58° in 2° steps every 40 ms
+  (50 °/s). It's erased by redrawing the same Bresenham line with
+  per-pixel background colors. A perpendicular-distance test
+  (|dx·cos a − dy·sin a|) decides which pings and ring labels it crossed,
+  and only those are redrawn.
+- **Alternative rejected:** erasing the sweep by drawing it black left gaps
+  in every ring it crossed. Redrawing all the rings each step would cost
+  ~40 ms.
+
+## Target smoothing (milestone 4)
+
+Observed on hardware with the unfiltered view: blips twitched by ±10–20 cm
+on a still target, occasionally jumped or flashed (ghost reflections, slot
+hand-overs), and stepped visibly between frames. The fixes, all in
+`track.c` / `ui.c`, with constants as `#define`s:
+
+| Stage | Rule | Constant | Why |
+|---|---|---|---|
+| Range gate | 0.5 m ≤ d ≤ 6 m | `MIN_RANGE_MM`, `MAX_RANGE_MM` | under 0.5 m is the holder (brief); 6 m is the radar's maximum range |
+| Confirm | shown after 2 good frames in a row | `CONFIRM_FRAMES` = 2 (~0.18 s) | hides one-frame ghosts |
+| Hold | removed after 3 misses in a row | `HOLD_FRAMES` = 3 (~0.27 s) | stops flicker when the radar drops a frame |
+| Jump reset | \|raw − smoothed\| > 1.2 m: restart the filter at the new reading | `JUMP_MM` | a different person in the slot shouldn't slide across the screen |
+| Adaptive EMA | s += (raw − s)·α, α = 1/4 if \|raw − s\| ≤ 250 mm, else 1/2 | `EMA_SLOW_SHIFT`, `EMA_FAST_SHIFT`, `EMA_FAST_MM` | heavy smoothing when still, quick response when moving or panning |
+| Glide | drawn position moves halfway to the goal every 40 ms | `glide()` in ui.c | dots slide between the 90 ms radar frames |
+
+EMA math: alpha = 2^−k, so it's a shift instead of a divide. The state is
+kept in mm × 16 (`FP_SHIFT` = 4), so small corrections aren't lost to
+truncation. Effect at 11 Hz:
+- α = 1/4: time constant ≈ 1/α frames = 4 frames ≈ 0.36 s. Noise std is
+  reduced to √(α/(2−α)) = 38% of raw.
+- α = 1/2: ≈ 2 frames ≈ 0.18 s, noise reduced to 58% of raw.
+
+A fixed α = 1/4 would lag about 0.36 s whenever the device is panned,
+which was the complaint about turning. The adaptive switch keeps the low
+noise when still without that lag.
+
+Distance is measured with a Manhattan distance |dx| + |dy| instead of a true
+distance. It's cheap (no square root), and for thresholds like these
+the ≤ 41% overestimate on diagonals doesn't matter.
+
+**Direction arrows:** the last 5 smoothed positions are kept per target.
+Movement from the oldest to the newest (4 frames ≈ 0.36 s) is scaled to a
+14 px arrow, but only if the target moved ≥ 150 mm (Manhattan) in that
+time, about 0.4 m/s. Below that the arrow is hidden, so a standing person
+doesn't get a wobbling arrow. The radar's own speed field wasn't used: it
+only gives the radial speed (toward or away), not the direction.
 
 ## Alert zone hysteresis
 
