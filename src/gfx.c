@@ -222,3 +222,46 @@ int16_t gfx_uint(int16_t x, int16_t y, uint16_t n, uint16_t fg, uint16_t bg, uin
     }
     return x;
 }
+
+/*
+ * gfx_int_pad - draw a signed number right-aligned in a field of `width`
+ * characters, padded with spaces on the left.
+ *
+ * Because text is opaque and the field width is fixed, redrawing a value in
+ * the same place fully erases the old one, even when it had more digits.
+ * If the number needs more than `width` characters, it is drawn in full.
+ */
+int16_t gfx_int_pad(int16_t x, int16_t y, int32_t n, uint8_t width,
+                    uint16_t fg, uint16_t bg, uint8_t scale)
+{
+    char buf[12];                       /* "-2147483648" + spare */
+    uint8_t i = 0;
+    uint8_t neg = (n < 0);
+    uint32_t u = neg ? (uint32_t)(-n) : (uint32_t)n;
+
+    do {                                /* digits, least significant first */
+        buf[i++] = '0' + (u % 10);
+        u /= 10;
+    } while (u);
+    if (neg) {
+        buf[i++] = '-';
+    }
+
+    for (uint8_t pad = i; pad < width; pad++) {
+        x = gfx_char(x, y, ' ', fg, bg, scale);
+    }
+    while (i) {
+        x = gfx_char(x, y, buf[--i], fg, bg, scale);
+    }
+    return x;
+}
+
+/*
+ * gfx_hex8 - draw one byte as two uppercase hex digits.
+ */
+int16_t gfx_hex8(int16_t x, int16_t y, uint8_t v, uint16_t fg, uint16_t bg, uint8_t scale)
+{
+    static const char hex[] PROGMEM = "0123456789ABCDEF";
+    x = gfx_char(x, y, pgm_read_byte(&hex[v >> 4]), fg, bg, scale);
+    return gfx_char(x, y, pgm_read_byte(&hex[v & 0x0F]), fg, bg, scale);
+}

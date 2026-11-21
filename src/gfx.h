@@ -22,5 +22,8 @@ int16_t gfx_char(int16_t x, int16_t y, char c, uint16_t fg, uint16_t bg, uint8_t
 int16_t gfx_text(int16_t x, int16_t y, const char *s, uint16_t fg, uint16_t bg, uint8_t scale);
 int16_t gfx_text_P(int16_t x, int16_t y, const char *s, uint16_t fg, uint16_t bg, uint8_t scale);
 int16_t gfx_uint(int16_t x, int16_t y, uint16_t n, uint16_t fg, uint16_t bg, uint8_t scale);
+int16_t gfx_int_pad(int16_t x, int16_t y, int32_t n, uint8_t width,
+                    uint16_t fg, uint16_t bg, uint8_t scale);
+int16_t gfx_hex8(int16_t x, int16_t y, uint8_t v, uint16_t fg, uint16_t bg, uint8_t scale);
 
 #endif /* GFX_H */
