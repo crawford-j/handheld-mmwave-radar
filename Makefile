@@ -13,8 +13,8 @@ CC      := avr-gcc
 OBJCOPY := avr-objcopy
 SIZE    := avr-size
 
-# Radar link speed: 57600 (radar switched 2026-11-21); 250000 = factory radar
-RADAR_BAUD ?= 57600UL
+# Radar link speed: 250000 talks to the radar at its factory 256000 (-2.34 %)
+RADAR_BAUD ?= 250000UL
 # 1 = build the one-time radar baud switch instead, to RADAR_SETUP_BAUD
 RADAR_SETUP ?= 0
 RADAR_SETUP_BAUD ?= 38400UL

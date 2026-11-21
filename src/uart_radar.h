@@ -8,11 +8,11 @@
 
 #include <stdint.h>
 
-/* Link speed. The radar was switched from its factory 256000 to 57600 with
- * the RADAR_SETUP build (2026-11-21). 250000 still talks to a
- * factory-default radar (-2.34 %). */
+/* Link speed. The radar runs at its factory 256000 (the only rate where it
+ * sends ~11 frames/s); 250000 is the closest the AVR can make (-2.34 %).
+ * 38400/57600 work too but the radar only sends ~5 frames/s there. */
 #ifndef RADAR_BAUD
-#define RADAR_BAUD 57600UL
+#define RADAR_BAUD 250000UL
 #endif
 
 #define RADAR_TARGETS       3
