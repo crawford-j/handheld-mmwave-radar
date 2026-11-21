@@ -316,13 +316,52 @@ time, about 0.4 m/s. Below that the arrow is hidden, so a standing person
 doesn't get a wobbling arrow. The radar's own speed field wasn't used: it
 only gives the radial speed (toward or away), not the direction.
 
-## Alert zone hysteresis
+## Alert zone hysteresis (milestone 5)
 
-_TBD_
+The input is the nearest **confirmed, filtered** target from `track.c`. It's
+already range-gated (nothing under 0.5 m) and smoothed, so single-frame
+ghosts and jitter can't trigger the alarm on their own.
+
+Two thresholds:
+- off → on when nearest < R
+- on → off when nearest > R + 250 mm, or when no target is left
+
+With the default R = 1.5 m, the alarm turns on inside 1.50 m and off beyond
+1.75 m. The 250 mm band is about 5× the filtered position noise on a still
+target (std ≈ 46 mm, simulated), so someone standing at the edge can't
+toggle it.
+
+Beep rate is linear in distance:
+`period = 100 + (d − 500)·(800 − 100)/(R − 500)` ms, clamped. That gives
+800 ms at the zone edge and 100 ms at the 0.5 m minimum range. In the
+hysteresis band it beeps at the slowest rate. Mute silences the buzzer only;
+the zone ring and ALERT text still work.
+
+Tested on hardware: beeps start crossing 1.5 m, speed up approaching
+0.5 m, and stop past ~1.75 m with no chatter at the edge.
 
 ## Buzzer tone (Timer2)
 
-_TBD_
+A passive buzzer needs an AC drive at audio frequency. Timer2 makes it in
+hardware on OC2B (PD3, the fixed pin wired to the buzzer through 220 Ω):
+
+- Mode: CTC, WGM2 = 010, TOP = OCR2A [M328P §18.7.2, Table 18-8].
+- Output: COM2B = 01, toggle OC2B on compare match [Table 18-5].
+- Prescaler: N = 32, CS2 = 011 [Table 18-9].
+- Frequency: f = F_CPU / (2·N·(1 + OCR2A)) = 16 MHz / (2·32·125) =
+  **2000 Hz exactly** with OCR2A = OCR2B = 124. OCR2B must be ≤ OCR2A for
+  the match to happen.
+- Lowest possible tone with /32: OCR2A = 255 gives 977 Hz.
+
+Beeps are made by connecting and disconnecting OC2B (COM2B bits) while the
+timer keeps running. Between beeps the pin is driven low, so no DC sits
+across the buzzer. Each beep is 40 ms.
+
+Alternatives considered:
+- Bit-banging the pin from an ISR at 4 kHz costs CPU and jitters while the
+  display is busy.
+- Fast PWM mode would also work, but CTC toggle gives an exact 50% duty
+  cycle with one register.
 
 ## Touch calibration
 
