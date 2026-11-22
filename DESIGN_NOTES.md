@@ -363,7 +363,7 @@ targets are short-lived close-range ghosts. Three countermeasures, all
 |---|---|---|
 | Stricter close-range confirm | new targets under 1.0 m need 5 frames in a row (~0.45 s) instead of 2 before they're shown | `CONFIRM_NEAR_FRAMES`, `NEAR_MM` (track.c) |
 | Entry debounce | the nearest target must be inside R for 4 frames in a row (~0.36 s) before the alarm starts | `ALERT_ENTER_FRAMES` |
-| Arming delay | no alarm for the first 5 s after power-up; the status line shows ARMING | `ALERT_ARM_MS` |
+| Arming delay | no alarm for 8 s after the button press or wake from standby; the status line shows ARMING (originally 5 s after power-up; the device now boots into standby) | `ALERT_REARM_MS` |
 
 A target already confirmed farther out stays shown as it walks in, so real
 approaches are not delayed by the close-range rule. Not used yet: the
@@ -404,6 +404,23 @@ interrupts. Timer0 and USART RX keep running and wake it
 1 ms tick and the UART, and saves only a few mA next to the radar and
 backlight. The real off switch is a switch on the battery lead, outside
 the firmware.
+
+**Boot into standby (team request after testing).** At power-up the
+firmware now goes straight to the STANDBY screen instead of a 5 s arming
+countdown. Powering on is usually done while placing the device, so a
+fixed delay from power-up was either too short or wasted; an explicit
+press when the device is in place matches how it's used.
+
+### Mute on the radar view
+
+Mute moved from the menu to the speaker icon in the top-right corner of
+the radar view: a tap toggles it, and the icon shows a red X when muted.
+Muting is the setting changed most often, and it should not take a trip
+through the menu (which also re-arms the alarm). The hit box is the whole
+42 x 44 px corner, about 2.5x the icon, because of the stylus and the
+small calibration offset. The change is saved to EEPROM immediately;
+`nvm_update` writes only the mute byte and the checksum (~7 ms), so the
+radar ring buffer (~0.4 s of data) can't overflow.
 
 ### Handheld use: ego-motion (2026-11-21, removed 2026-11-22)
 
@@ -582,11 +599,11 @@ Final firmware (2026-11-22, avr-gcc -Os, `-ffunction-sections
 
 | Memory | Used | Total | % |
 |---|---|---|---|
-| Flash (.text + .data) | 21,470 B | 32,768 B | 66 % |
+| Flash (.text + .data) | 21,566 B | 32,768 B | 66 % |
 | SRAM (.data + .bss) | 720 B | 2,048 B | 35 % |
 | Stack headroom | ~1,328 B | | |
 
-(Updated after standby was added; before it, 21,068 B flash and 716 B SRAM.)
+(Updated after standby and the mute icon tap were added; before them, 21,068 B flash and 716 B SRAM.)
 
 Largest SRAM users:
 
