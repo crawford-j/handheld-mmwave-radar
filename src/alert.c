@@ -108,6 +108,31 @@ void alert_rearm(uint32_t now_ms)
 }
 
 /*
+ * alert_arming_secs - whole seconds left in the arming countdown, rounded
+ * up (so it shows 8..1, never 0 while arming); 0 once armed.
+ */
+uint8_t alert_arming_secs(uint32_t now_ms)
+{
+    int32_t left = (int32_t)(arm_until - now_ms);   /* wrap-safe */
+    if (left <= 0) {
+        return 0;
+    }
+    return (uint8_t)((left + 999) / 1000);
+}
+
+/*
+ * alert_state - current state for the display, valid between radar frames
+ * too: ALERT_ARMING while counting down, else ALERT_ON / ALERT_IDLE.
+ */
+uint8_t alert_state(uint32_t now_ms)
+{
+    if (alert_arming_secs(now_ms)) {
+        return ALERT_ARMING;
+    }
+    return active ? ALERT_ON : ALERT_IDLE;
+}
+
+/*
  * alert_update - recompute the alert from the current targets and set the
  * buzzer cadence. Called once per radar frame. Returns ALERT_ARMING during
  * the power-up delay, else ALERT_ON / ALERT_IDLE.

@@ -27,6 +27,8 @@ uint8_t  alert_get_mute(void);
 
 uint8_t  alert_update(uint32_t now_ms);   /* returns ALERT_IDLE/ON/ARMING     */
 void     alert_rearm(uint32_t now_ms);    /* restart the quiet arming delay   */
+uint8_t  alert_state(uint32_t now_ms);    /* ALERT_* for display, any time    */
+uint8_t  alert_arming_secs(uint32_t now_ms); /* whole seconds left, 0 = armed */
 uint8_t  alert_active(void);
 uint16_t alert_nearest_mm(void);          /* nearest shown target, 0 if none  */
 
