@@ -1,6 +1,5 @@
 /*
- * settings.h - User settings changed from the touch menu (saved to EEPROM
- * in milestone 7).
+ * settings.h - User settings changed from the touch menu, kept in EEPROM.
  */
 
 #ifndef SETTINGS_H
@@ -39,7 +38,9 @@ typedef struct {
 
 extern settings_t settings;
 
-void settings_defaults(void);
-void settings_apply(void);
+void    settings_defaults(void);
+void    settings_apply(void);
+uint8_t settings_load(void);        /* 1 = loaded from EEPROM, 0 = defaults */
+uint8_t settings_save(void);        /* 1 = something was written            */
 
 #endif /* SETTINGS_H */
