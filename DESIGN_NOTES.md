@@ -411,6 +411,31 @@ countdown. Powering on is usually done while placing the device, so a
 fixed delay from power-up was either too short or wasted; an explicit
 press when the device is in place matches how it's used.
 
+### Standby animation
+
+The team asked for a GIF on the standby screen. A real GIF can't be
+decoded on the ATmega328P: GIF is LZW-compressed, and an LZW decoder needs
+a 4096-entry code table (~12 KB of RAM), against 2 KB of SRAM. So the GIF
+is decoded on the PC by `tools/gen_anim.py` (Python + Pillow), the same
+approach as the font and sine-table generators:
+
+- each frame is shrunk to fit 64 x 64 px and thresholded to 1 bit
+  (foreground drawn in the theme's label color, background black),
+- packed 8 pixels per byte: 512 B per frame, at most 12 frames (6 KB),
+- extra frames are dropped evenly and the delays stretched, so the loop
+  keeps its length; each GIF frame delay is kept, but never under 60 ms.
+
+The firmware draws each frame at 2x (128 x 128) in one window, sending
+each source row twice and each run of equal pixels as one
+`ili9341_push_color` call. A frame is 32 KB of SPI data, ~70 ms at 4 MHz.
+That's well under the radar buffer's ~0.4 s, so the standby loop still
+keeps up with the radar. Without a GIF, the tool generates a radar-scope
+animation, so the build never depends on an external file.
+
+Alternatives: RGB565 frames (16x the flash, 2 frames at most), or run-
+length encoding (smaller, but a simple 1-bit frame is easier to explain
+and 6 KB fit).
+
 ### Mute on the radar view
 
 Mute moved from the menu to the speaker icon in the top-right corner of
@@ -599,11 +624,13 @@ Final firmware (2026-11-22, avr-gcc -Os, `-ffunction-sections
 
 | Memory | Used | Total | % |
 |---|---|---|---|
-| Flash (.text + .data) | 21,566 B | 32,768 B | 66 % |
-| SRAM (.data + .bss) | 720 B | 2,048 B | 35 % |
+| Flash (.text + .data) | 28,128 B | 32,768 B | 86 % |
+| SRAM (.data + .bss) | 725 B | 2,048 B | 35 % |
 | Stack headroom | ~1,328 B | | |
 
-(Updated after standby and the mute icon tap were added; before them, 21,068 B flash and 716 B SRAM.)
+(Updated after the standby animation was added. 6,144 B of the flash is
+the 12 animation frames; without them the firmware is ~21.6 KB. Before
+standby: 21,068 B flash and 716 B SRAM.)
 
 Largest SRAM users:
 
