@@ -22,6 +22,7 @@ Usage:
   python tools/gen_anim.py my.gif                # convert a GIF
   python tools/gen_anim.py my.gif --invert       # dark subject on light bg
   python tools/gen_anim.py my.gif --threshold 100 --size 64 --frames 12
+  python tools/gen_anim.py my.gif --dither --crop 100,0,380,280 --preview p.png
 """
 
 import argparse
@@ -55,7 +56,7 @@ def default_frames(size, n=12):
     return frames
 
 
-def gif_frames(path, size, max_frames, threshold, invert):
+def gif_frames(path, size, max_frames, threshold, invert, dither, crop):
     src = Image.open(path)
     raw = []
     for fr in ImageSequence.Iterator(src):
@@ -64,6 +65,8 @@ def gif_frames(path, size, max_frames, threshold, invert):
         bg = Image.new("RGBA", rgba.size, (0, 0, 0, 255) if not invert else (255,) * 4)
         bg.alpha_composite(rgba)                # transparent pixels -> background
         gray = bg.convert("L")
+        if crop:                                # x0,y0,x1,y1 in source pixels
+            gray = gray.crop(crop)
         gray.thumbnail((size, size), Image.LANCZOS)
         raw.append((gray, delay))
 
@@ -77,12 +80,15 @@ def gif_frames(path, size, max_frames, threshold, invert):
         raw = [(g, each) for g, _ in raw]
 
     if threshold is None:                       # mean brightness of all frames
-        pixels = [p for g, _ in raw for p in g.getdata()]
+        pixels = b"".join(g.tobytes() for g, _ in raw)
         threshold = sum(pixels) // len(pixels)
 
     frames = []
     for gray, delay in raw:
-        if invert:
+        if dither:                              # Floyd-Steinberg: more detail
+            src = gray.point(lambda v: 255 - v) if invert else gray
+            bits = src.convert("1")             # (dither ignores --threshold)
+        elif invert:
             bits = gray.point(lambda v: 1 if v < threshold else 0, "1")
         else:
             bits = gray.point(lambda v: 1 if v >= threshold else 0, "1")
@@ -174,14 +180,28 @@ def main():
     ap.add_argument("--frames", type=int, default=12, help="max frames kept")
     ap.add_argument("--threshold", type=int, help="0-255 cut-off (default: mean)")
     ap.add_argument("--invert", action="store_true", help="dark subject on light background")
+    ap.add_argument("--dither", action="store_true", help="dither instead of a hard cut-off (photos)")
+    ap.add_argument("--crop", help="x0,y0,x1,y1 crop in source pixels before resizing")
+    ap.add_argument("--preview", help="also save a PNG strip of the frames (2x) here")
     args = ap.parse_args()
 
     if args.gif:
-        frames, thr = gif_frames(args.gif, args.size, args.frames, args.threshold, args.invert)
-        print(f"threshold {thr}")
+        crop = tuple(int(v) for v in args.crop.split(",")) if args.crop else None
+        frames, thr = gif_frames(args.gif, args.size, args.frames, args.threshold,
+                                 args.invert, args.dither, crop)
+        print("dithered" if args.dither else f"threshold {thr}")
         write(frames, Path(args.gif).name)
     else:
-        write(default_frames(args.size), "the built-in radar animation")
+        frames = default_frames(args.size)
+        write(frames, "the built-in radar animation")
+    if args.preview:
+        w, h = frames[0][0].size
+        strip = Image.new("L", (len(frames) * (2 * w + 4), 2 * h), 60)
+        for i, (img, _) in enumerate(frames):
+            big = img.convert("L").resize((2 * w, 2 * h), Image.NEAREST)
+            strip.paste(big, (i * (2 * w + 4), 0))
+        strip.save(args.preview)
+        print(f"preview: {args.preview}")
 
 
 if __name__ == "__main__":
