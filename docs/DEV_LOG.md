@@ -196,3 +196,7 @@ project, and the design report.
   80 x 62 px) was chosen. The clips are copyrighted, so they and the frames
   made from them stay out of the public repo (`--local`, git-ignored); the
   published build keeps the radar-scope animation.
+- Flashing the 27.8 KB build took four upload passes; every failure was
+  again at byte 47 of a 128-byte page (0x69AF, 0x6C2F, 0x05AF). A bigger
+  image means more pages, so more chances to hit it. Still points at the
+  D1 line; unplugging D1 during uploads remains the next thing to try.
