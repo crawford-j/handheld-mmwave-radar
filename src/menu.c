@@ -3,7 +3,7 @@
  *
  * Two pages, both sized for the stylus (buttons >= 28 px tall):
  *
- *   SETTINGS                          [ BACK ]
+ *   SETTINGS                [ RESET ] [ BACK ]
  *   UNITS   [  M  ] [ FT  ]
  *   ZONE    [  -  ]  1.5m   [  +  ]
  *   SOUND   [ ON  ] [MUTE ]
@@ -43,6 +43,8 @@
 #define COL_A       96          /* first button column               */
 #define BTN_W       64
 #define COL_B       (COL_A + BTN_W + 6)
+#define RESET_X     158
+#define RESET_W     74
 #define BACK_X      240
 #define BACK_Y      2
 #define BACK_W      76
@@ -251,6 +253,7 @@ static void draw_settings(void)
     accent = ui_theme_base(0);
     gfx_fill_screen(C_BG);
     gfx_text_P(6, 8, PSTR("SETTINGS"), accent, C_BG, 2);
+    button(RESET_X, BACK_Y, RESET_W, BACK_H, PSTR("RESET"), 0);
     button(BACK_X, BACK_Y, BACK_W, BACK_H, PSTR("BACK"), 0);
     for (uint8_t r = 0; r < N_ROWS; r++) {
         draw_row(r);
@@ -334,6 +337,11 @@ void menu_run(menu_idle_fn idle)
 
         if (in_rect(x, y, BACK_X, BACK_Y, BACK_W, BACK_H)) {
             return;
+        }
+        if (in_rect(x, y, RESET_X, BACK_Y, RESET_W, BACK_H)) {
+            settings_defaults();        /* factory settings; saved on BACK */
+            draw_settings();
+            continue;
         }
         if (y < ROW_Y0) {
             continue;
