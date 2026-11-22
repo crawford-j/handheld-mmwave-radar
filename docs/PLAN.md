@@ -1,7 +1,10 @@
-# Firmware Plan (proposal)
+# Firmware Plan
 
-Status: **proposed, waiting for approval.** Datasheet references use the short
-names in [datasheets/README.md](datasheets/README.md).
+Status: **approved 2026-11-21; milestones 1–5 done.** The sections below are
+the original proposal. Where the built design differs, the "Status and scope
+changes" section at the end and DESIGN_NOTES.md describe what was actually
+done. Datasheet references use the short names in
+[datasheets/README.md](datasheets/README.md).
 
 ## Module layout
 
@@ -150,3 +153,48 @@ meters, 1.5 m radius, unmuted, debug off.
 5. Alert zone + buzzer
 6. Touch raw → calibration → menu
 7. EEPROM settings
+
+## Status and scope changes (2026-11-22)
+
+| Milestone | Status |
+|---|---|
+| 1. Display init + test pattern | done |
+| 2. Raw radar numbers + counters | done |
+| 3. Radar view | done, then redesigned as a dome with a pulse scan |
+| 4. Smoothing + arrows | done (alpha-beta filter, glide, confirm/hold) |
+| 5. Alert zone + buzzer | done (1.5 m, solid tone < 1 m, arming, re-arm button) |
+| 6. Touch: raw → calibration → menu | next |
+| 7. EEPROM settings | after 6 |
+
+Differences from the original proposal:
+- **Radar link:** runs at 250000 baud (radar at its factory 256000), not
+  38400. The radar only sends its full ~11 frames/s at 256000, and the
+  250000 link measured zero errors. See DESIGN_NOTES "Radar UART baud rate".
+- **Display:** a half-dome with the ±60° coverage cone and an expanding
+  pulse. The rotating sweep line is kept as a build option
+  (`UI_SCAN_PULSE=0`) and will be a menu choice.
+- **Handheld mode:** tried and removed. The radar can't separate its own
+  motion from targets without a gyro. The device is used set down or
+  mounted.
+- **D2 button:** re-arms the alarm (quiet countdown) instead of being
+  optional.
+
+### Milestone 6 scope (touch, stylus-friendly)
+
+1. Raw XPT2046 readout (X, Y, Z1 pressure) and corner calibration constants.
+2. Tap anywhere to open the menu:
+   - Units: m / ft (labels, rings, zone text)
+   - Alert radius: − / + in 0.5 m steps (1.0–4.0 m)
+   - Mute on/off
+   - Debug readout on/off
+   - Scan style: pulse / sweep line
+   - Theme: 3 presets, or custom with primary / secondary / tertiary colors
+     picked from an on-screen palette
+3. Colors become runtime variables (a theme struct) instead of `#define`s.
+   The dome gradient is derived from the primary color.
+
+### Milestone 7 scope (EEPROM)
+
+All menu settings, including the theme colors, are saved with a magic
+byte, version and checksum. Defaults are used on a blank or corrupt EEPROM,
+and writes use `eeprom_update_*` so unchanged bytes aren't rewritten.
