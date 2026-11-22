@@ -1,18 +1,26 @@
-# Handheld mmWave Radar
+# mmWave Presence Radar
 
 Final project for ECE:3360 Embedded Systems, University of Iowa, Fall 2026.
 
-A handheld presence radar. An HLK-LD2450 24 GHz radar module tracks up to three
-people, an ATmega328P reads their positions over UART, and a 2.8" ILI9341 TFT
-with an XPT2046 touch controller shows them on a radar-style display.
+A portable, battery-powered presence radar: set it down or mount it facing a
+room, and it shows where people are and sounds an alarm when someone comes
+too close. An HLK-LD2450 24 GHz radar module tracks up to three people within
+a 120° cone out to 6 m. An ATmega328P reads their positions over UART, filters
+them, and draws a radar display on a 2.8" ILI9341 TFT with an XPT2046 touch
+controller.
 
 ## Features
 
-- Radar view with range rings, a rotating sweep line and a labeled ping per target
-- Smoothed target tracking with direction arrows
-- Alert zone with a passive buzzer that beeps faster as a target gets closer
-- Touch menu for units (m / ft), alert radius and mute
-- Settings saved to EEPROM and restored at power-up
+- Radar view: a half-dome with range rings, an expanding pulse (or a rotating
+  sweep line), and a ping per target labeled with its distance
+- Target tracking: alpha-beta filter with velocity prediction, confirm/hold
+  ghost rejection, gliding pings and direction arrows
+- Alert zone (default 1.5 m) with hysteresis: a passive buzzer beeps faster as
+  a target gets closer, and holds a solid tone under 1 m
+- Arming delay at power-up, and a button to re-arm after mounting
+- Touch menu (in progress): units (m / ft), alert radius, mute, scan style,
+  and color themes (3 presets plus custom primary/secondary/tertiary colors)
+- Settings saved to EEPROM with a checksum (in progress)
 
 ## Hardware
 
@@ -23,6 +31,7 @@ with an XPT2046 touch controller shows them on a radar-style display.
 | ILI9341 2.8" TFT + XPT2046 | Display and resistive touch, SPI |
 | TXS0108E | 5 V / 3.3 V level shifter |
 | Passive buzzer | Alert tone (Timer2 / OC2B) |
+| Push button | Re-arm the alarm |
 
 ### Pin map
 
@@ -38,15 +47,17 @@ with an XPT2046 touch controller shows them on a radar-style display.
 | Radar TX -> AVR RX | D0 | PD0 |
 | AVR TX -> radar RX | D1 | PD1 |
 | Buzzer | D3 | PD3 / OC2B |
-| Optional button | D2 | PD2 / INT0 |
+| Button (to GND) | D2 | PD2 |
 
 ## Building
 
 Firmware is plain C on avr-libc, with no Arduino core or libraries.
 
 ```sh
-make        # build and print flash/SRAM usage
-make flash  # upload with avrdude (set PORT in the Makefile)
+make                 # build and print flash/SRAM usage
+make flash           # upload with avrdude (set PORT in the Makefile)
+make DEMO=1          # synthetic targets instead of the radar, for UI testing
+make RADAR_SETUP=1   # one-time radar baud configuration tool
 ```
 
 The radar's TX wire must be disconnected from D0 while uploading.
@@ -55,7 +66,9 @@ The radar's TX wire must be disconnected from D0 while uploading.
 
 ```
 src/              firmware sources
-docs/datasheets/  component datasheets
-DESIGN_NOTES.md   design decisions, calculations and alternatives
+tools/            font and sine table generators (Python)
+docs/datasheets/  component datasheet sources
+docs/PLAN.md      module plan and milestones
+DESIGN_NOTES.md   design decisions, calculations, measurements and alternatives
 Makefile          avr-gcc build
 ```
