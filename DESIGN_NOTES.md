@@ -484,9 +484,47 @@ Reading details:
 - SPI drops to 1 MHz for each touch read.
 - A touch counts when Z1 ≥ 150.
 
-## EEPROM settings format
+## EEPROM settings format (milestone 7)
 
-_TBD_
+**Driver:** `nvm.c` drives EEAR/EEDR/EECR directly [M328P §8.4, §8.6], as
+the brief requires (register-level, no `eeprom_*` library calls).
+- Read: wait for EEPE = 0, set EEAR, set EERE, then read EEDR.
+- Write: wait for EEPE = 0 with interrupts on. Then, with interrupts off,
+  load EEAR and EEDR, write EEMPE = 1, then EEPE = 1. The datasheet requires
+  EEPE within 4 cycles of EEMPE and warns that an interrupt in between makes
+  the write fail.
+- The disassembly confirms `out EECR,0x04` is immediately followed by
+  `sbi EECR,1` inside `cli`.
+- EEPM = 00 is the atomic erase + write, 3.4 ms per byte [Table 8-1].
+- The SPMEN wait is skipped, since the application never writes flash.
+
+**Image at address 0, 12 bytes:**
+
+| Byte | Content | Purpose |
+|---|---|---|
+| 0 | magic 0xA5 | a blank EEPROM reads 0xFF, so a never-written chip is rejected |
+| 1 | version 1 | bumped when `settings_t` changes, so an old layout isn't misread |
+| 2..10 | `settings_t`: units, radius (0.1 m), mute, debug, scan, theme, 3 custom color indices | |
+| 11 | ~(8-bit sum of bytes 0..10) | detects corruption or a half-finished save |
+
+**Load:** the magic, version, checksum and every field's range must all
+pass. Otherwise the defaults are used, and the screen shows DEFAULTS
+instead of LOADED for 3 s.
+
+**Save:** only when the menu closes and the settings actually changed.
+Each byte is written only if its value differs (read-before-write), which
+respects the 100,000-cycle endurance per byte [§8.4]. The worst case is
+12 bytes × 3.4 ms ≈ 41 ms, with interrupts disabled only for the few
+cycles of each write sequence. The screen shows SAVED.
+
+The Uno bootloader only writes flash, so saved settings survive
+reflashing the firmware.
+
+Alternatives considered:
+- A CRC-8 would catch more error patterns than a sum, but for 11 bytes
+  written in one burst a sum plus the magic and version is enough.
+- Wear leveling (rotating the block's address) isn't needed: settings
+  change a handful of times per session.
 
 ## Timer assignments
 
