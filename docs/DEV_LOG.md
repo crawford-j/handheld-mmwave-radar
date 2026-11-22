@@ -220,3 +220,10 @@ project, and the design report.
 - More colors were asked about: 4 shades (2 bits per pixel) would double
   the flash per frame, so only ~4-5 frames of this size would fit.
   Stayed with 2 colors and 9 frames.
+- Two more clips were compared: a chalk-toss clip and the pregame dance.
+  The chalk toss converts well (dark arena, bright jersey and chalk cloud,
+  so the 2-color version keeps the arms, the "23" and the toss); the
+  dance stays noisy because the crowd is as bright as the player. Picked
+  the chalk toss: every 3rd frame from 3 to 27 (frame 19 is a camera
+  flash), cut-off 95 so the arms don't merge into the cloud, 80 x 68 px
+  shown at 160 x 136, 6.1 KB. Firmware 28.4 KB.
