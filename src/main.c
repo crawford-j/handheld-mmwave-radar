@@ -24,6 +24,7 @@
 #include "track.h"
 #include "alert.h"
 #include "buzzer.h"
+#include "button.h"
 #include "ui.h"
 
 /* `make RADAR_SETUP=1` builds the one-time radar baud switch instead of the
@@ -77,6 +78,7 @@ int main(void)
     tick_init();
     radar_init();
     buzzer_init();
+    button_init();
     sei();                              /* enable interrupts (tick + USART RX) */
 
     uint32_t last_tick   = 0;
@@ -107,6 +109,13 @@ int main(void)
         if (have_new) {
             ui_set_targets();
             ui_alert_status(alert_update(now));
+        }
+
+        /* D2 button: re-arm. Silences the alarm and restarts the quiet
+         * ARMING countdown, for walking away after mounting the device. */
+        if (button_pressed()) {
+            alert_rearm(now);
+            ui_alert_status(ALERT_ARMING);
         }
 
 
