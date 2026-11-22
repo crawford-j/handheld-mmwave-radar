@@ -25,5 +25,8 @@ typedef struct {
 
 void           track_update(const radar_frame_t *fr);
 const track_t *track_get(uint8_t n);
+void           track_set_handheld(uint8_t on);
+uint8_t        track_get_handheld(void);
+uint8_t        track_device_moving(void);
 
 #endif /* TRACK_H */
