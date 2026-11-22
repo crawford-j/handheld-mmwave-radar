@@ -70,12 +70,14 @@ $(BUILD)/$(TARGET).hex: $(BUILD)/$(TARGET).elf
 size: $(BUILD)/$(TARGET).elf
 	$(SIZE) --mcu=$(MCU) -C $< 2>/dev/null || $(SIZE) $<
 
-# Retries once: the first upload sometimes fails verification (likely D1 is
-# loaded by the level shifter feeding the radar's RX); a second pass has
-# always verified.
+# Up to 4 tries: uploads sometimes fail verification, always at byte 47 of a
+# 128-byte page. Tests (2026-11-22) showed the bad byte is written, not
+# misread (verify-only passes are always clean), and it happens with both
+# radar UART wires unplugged, so it isn't the level shifter. Any pass that
+# verifies leaves a correct image.
+FLASH_CMD = $(AVRDUDE) -p $(MCU) -c arduino -P $(PORT) -b $(BAUD) -U flash:w:$<:i
 flash: $(BUILD)/$(TARGET).hex
-	$(AVRDUDE) -p $(MCU) -c arduino -P $(PORT) -b $(BAUD) -U flash:w:$<:i || \
-	$(AVRDUDE) -p $(MCU) -c arduino -P $(PORT) -b $(BAUD) -U flash:w:$<:i
+	$(FLASH_CMD) || $(FLASH_CMD) || $(FLASH_CMD) || $(FLASH_CMD)
 
 clean:
 	rm -rf $(BUILD)
