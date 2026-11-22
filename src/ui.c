@@ -662,6 +662,39 @@ static void apply_theme(void)
 }
 
 /*
+ * draw_sound_icon - 20 x 16 px speaker in the top-right corner.
+ *   body: 4 x 6 rectangle; cone: vertical lines growing from 6 to 16 px
+ *   sound on : two short "wave" lines in the theme text color
+ *   muted    : a red X where the waves would be
+ */
+#define ICON_X  294
+#define ICON_Y  16
+static void draw_sound_icon(void)
+{
+    const int16_t x = ICON_X, y = ICON_Y;
+    uint16_t body = c_text;
+
+    ili9341_fill_rect(x, y, 20, 16, C_BG);
+    ili9341_fill_rect(x, y + 5, 4, 6, body);            /* body */
+    for (int16_t i = 0; i < 6; i++) {                   /* cone */
+        gfx_vline(x + 4 + i, y + 5 - i, 6 + 2 * i, body);
+    }
+    if (alert_get_mute()) {
+        gfx_line(x + 13, y + 4, x + 19, y + 11, COLOR_RED);
+        gfx_line(x + 13, y + 11, x + 19, y + 4, COLOR_RED);
+        gfx_line(x + 14, y + 4, x + 19, y + 10, COLOR_RED);  /* 2 px thick */
+        gfx_line(x + 14, y + 11, x + 19, y + 5, COLOR_RED);
+    } else {
+        gfx_vline(x + 13, y + 5, 6, body);              /* inner wave */
+        gfx_vline(x + 14, y + 4, 1, body);
+        gfx_vline(x + 14, y + 11, 1, body);
+        gfx_vline(x + 17, y + 3, 10, body);             /* outer wave */
+        gfx_vline(x + 18, y + 2, 1, body);
+        gfx_vline(x + 18, y + 13, 1, body);
+    }
+}
+
+/*
  * ui_radar_init - apply the theme and units, clear the screen and draw the
  * dome, range labels and the big range text.
  */
@@ -696,6 +729,7 @@ void ui_radar_init(void)
     } else {
         gfx_text_P(APEX_X - 2 * 6, APEX_Y + 14, PSTR("6M"), c_label, C_BG, 2);
     }
+    draw_sound_icon();
 
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
         pings[n].on = 0;
@@ -875,7 +909,7 @@ static void scan_sweep(void)
 }
 
 /*
- * ui_alert_status - bottom line: zone radius (and MUTED) on the left; on the
+ * ui_alert_status - bottom line: zone radius on the left; on the
  * right, an 8-character field:
  *   "ARMING n" yellow, counting down the seconds left
  *   "   ARMED" green, watching
@@ -892,10 +926,7 @@ void ui_alert_status(uint8_t state, uint8_t secs)
         char buf[LABEL_MAX + 1];
         int16_t x = gfx_text_P(4, 231, PSTR("ZONE "), C_STATUS, C_BG, 1);
         format_dist(buf, alert_get_radius());
-        x = gfx_text(x, 231, buf, C_ALERT, C_BG, 1);
-        if (alert_get_mute()) {
-            gfx_text_P(x, 231, PSTR("  MUTED"), C_STATUS, C_BG, 1);
-        }
+        gfx_text(x, 231, buf, C_ALERT, C_BG, 1);
     }
     const int16_t x_right = LCD_WIDTH - 8 * GFX_CHAR_W - 4;     /* "ARMING n" */
     if (state == ALERT_ON) {
