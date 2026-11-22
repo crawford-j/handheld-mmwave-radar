@@ -19,11 +19,13 @@ RADAR_BAUD ?= 250000UL
 RADAR_SETUP ?= 0
 # 1 = feed synthetic targets instead of the radar (UI testing)
 DEMO ?= 0
+# 1 = build the touch calibration program instead
+TOUCH_CAL ?= 0
 RADAR_SETUP_BAUD ?= 38400UL
 
 CFLAGS  := -mmcu=$(MCU) -DF_CPU=$(F_CPU) -DRADAR_BAUD=$(RADAR_BAUD) \
            -DRADAR_SETUP=$(RADAR_SETUP) -DRADAR_SETUP_BAUD=$(RADAR_SETUP_BAUD) \
-           -DDEMO=$(DEMO) \
+           -DDEMO=$(DEMO) -DTOUCH_CAL=$(TOUCH_CAL) \
            -Os -std=gnu11 \
            -Wall -Wextra -ffunction-sections -fdata-sections -MMD -MP
 LDFLAGS := -mmcu=$(MCU) -Wl,--gc-sections

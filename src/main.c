@@ -36,6 +36,14 @@
 #include "radar_setup.h"
 #endif
 
+/* `make TOUCH_CAL=1` builds the touch calibration program instead. */
+#ifndef TOUCH_CAL
+#define TOUCH_CAL 0
+#endif
+#if TOUCH_CAL
+#include "touch_cal.h"
+#endif
+
 /* `make DEMO=1` replaces the radar with three synthetic moving targets
  * (demo.c), to check the display, filter and alert without the radar. */
 #ifndef DEMO
@@ -71,6 +79,9 @@ int main(void)
     tick_init();
     sei();
     radar_setup_run();                  /* never returns */
+#endif
+#if TOUCH_CAL
+    touch_cal_run();                    /* never returns */
 #endif
 
     ui_radar_init();
