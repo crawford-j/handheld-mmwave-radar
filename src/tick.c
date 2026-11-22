@@ -13,6 +13,7 @@
 #include <util/atomic.h>
 #include "tick.h"
 #include "buzzer.h"
+#include "button.h"
 
 static volatile uint32_t ms_count;
 
@@ -35,12 +36,14 @@ void tick_init(void)
 
 /*
  * Timer0 compare match A: fires every 1 ms. Also drives the buzzer's beep
- * timing, so beeps stay regular even while the main loop is drawing.
+ * timing and samples the button, so both keep exact timing even while the
+ * main loop is drawing.
  */
 ISR(TIMER0_COMPA_vect)
 {
     ms_count++;
     buzzer_tick();
+    button_tick();
 }
 
 /*

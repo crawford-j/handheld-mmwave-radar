@@ -1,5 +1,6 @@
 /*
- * button.h - Push-button on D2 (PD2), to GND, internal pull-up, debounced.
+ * button.h - Push-button on D2 (PD2), to GND, internal pull-up, debounced
+ * in the 1 ms tick interrupt.
  */
 
 #ifndef BUTTON_H
@@ -8,6 +9,7 @@
 #include <stdint.h>
 
 void    button_init(void);
-uint8_t button_pressed(uint32_t now_ms);
+void    button_tick(void);          /* from the 1 ms tick ISR only */
+uint8_t button_pressed(void);       /* 1 once per debounced press   */
 
 #endif /* BUTTON_H */
