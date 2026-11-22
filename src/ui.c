@@ -623,18 +623,23 @@ static uint16_t blend_white(uint16_t c)
 }
 
 /*
+ * ui_theme_base - base color of the current theme: role 0 = primary,
+ * 1 = secondary, 2 = tertiary. Custom themes read the palette picks.
+ */
+uint16_t ui_theme_base(uint8_t role)
+{
+    return (settings.theme == THEME_CUSTOM)
+         ? pgm_read_word(&ui_palette[settings.custom[role] % N_PALETTE])
+         : pgm_read_word(&theme_preset[settings.theme % 3][role]);
+}
+
+/*
  * apply_theme - derive all theme colors from the three base colors of the
  * selected preset (or the custom palette picks).
  */
 static void apply_theme(void)
 {
-    uint16_t base[3];
-    for (uint8_t i = 0; i < 3; i++) {
-        base[i] = (settings.theme == THEME_CUSTOM)
-                ? pgm_read_word(&ui_palette[settings.custom[i] % N_PALETTE])
-                : pgm_read_word(&theme_preset[settings.theme % 3][i]);
-    }
-    uint16_t pri = base[0], sec = base[1], ter = base[2];
+    uint16_t pri = ui_theme_base(0), sec = ui_theme_base(1), ter = ui_theme_base(2);
 
     c_edge      = pri;
     c_ring      = shade(pri, 200);

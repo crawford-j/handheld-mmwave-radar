@@ -21,6 +21,7 @@
 extern const uint16_t ui_palette[N_PALETTE] PROGMEM;
 
 void ui_radar_init(void);
+uint16_t ui_theme_base(uint8_t role);   /* 0 primary, 1 secondary, 2 tertiary */
 void ui_set_targets(void);
 void ui_animate(void);
 void ui_scan_step(uint32_t now);
