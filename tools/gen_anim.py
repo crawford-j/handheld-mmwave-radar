@@ -31,7 +31,7 @@ import argparse
 import math
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageSequence
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageSequence
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_C = ROOT / "src" / "standby_anim.c"
@@ -58,13 +58,15 @@ def default_frames(size, n=12):
     return frames
 
 
-def gif_frames(path, size, max_frames, threshold, invert, dither, crop, frange, pick=None):
+def gif_frames(path, size, max_frames, threshold, invert, dither, crop, frange, pick=None,
+               mask_from=None, mask_grow=1, region=None):
     src = Image.open(path)
     raw = []
+    mask_src = []                               # frames that show only the static light
     for i, fr in enumerate(ImageSequence.Iterator(src)):
-        if frange and not (frange[0] <= i < frange[1]):
-            continue
-        if pick and i not in pick:
+        keep_mask = mask_from and mask_from[0] <= i < mask_from[1]
+        use = not (frange and not (frange[0] <= i < frange[1])) and not (pick and i not in pick)
+        if not use and not keep_mask:
             continue
         delay = int(fr.info.get("duration", 100) or 100)
         rgba = fr.convert("RGBA")
@@ -74,7 +76,10 @@ def gif_frames(path, size, max_frames, threshold, invert, dither, crop, frange, 
         if crop:                                # x0,y0,x1,y1 in source pixels
             gray = gray.crop(crop)
         gray.thumbnail((size, size), Image.LANCZOS)
-        raw.append((gray, delay))
+        if keep_mask:
+            mask_src.append(gray)
+        if use:
+            raw.append((gray, delay))
 
     # Picked frames: each one is shown for the GIF frames it stands in for
     # (the gap to the next pick), so the loop keeps the clip's real speed.
@@ -97,6 +102,38 @@ def gif_frames(path, size, max_frames, threshold, invert, dither, crop, frange, 
         pixels = b"".join(g.tobytes() for g, _ in raw)
         threshold = sum(pixels) // len(pixels)
 
+    # Static light removal (--mask-from): a pixel that is "on" in every one
+    # of the mask frames is a fixed light, not the subject. Grown by
+    # mask_grow px (camera shake, glow edges) and cleared from every frame.
+    # Whatever moves through that area (e.g. the chalk) is cut there too,
+    # so pick mask frames taken before the subject reaches it.
+    # --region x0,y0,x1,y1,T: a separate, usually higher cut-off inside a
+    # box (output pixels), e.g. to keep only the brightest part of a glow.
+    def cut(gray):
+        if region is None:
+            return gray.point(lambda v: 255 if v >= threshold else 0)
+        x0, y0, x1, y1, t2 = region
+        out = gray.copy()
+        px, po = gray.load(), out.load()
+        for y in range(gray.height):
+            for x in range(gray.width):
+                t = t2 if (x0 <= x < x1 and y0 <= y < y1) else threshold
+                po[x, y] = 255 if px[x, y] >= t else 0
+        return out
+
+    mask = None
+    if mask_src:
+        on = [cut(g) for g in mask_src]
+        mask = on[0]
+        for m in on[1:]:
+            mask = ImageChops.darker(mask, m)    # AND
+        if mask_grow:
+            mask = mask.filter(ImageFilter.MaxFilter(2 * mask_grow + 1))
+        if region is not None:                  # only remove lights inside the box
+            box = Image.new("L", mask.size, 0)
+            box.paste(255, region[:4])
+            mask = ImageChops.darker(mask, box)
+
     frames = []
     for gray, delay in raw:
         if dither:                              # Floyd-Steinberg: more detail
@@ -105,7 +142,10 @@ def gif_frames(path, size, max_frames, threshold, invert, dither, crop, frange, 
         elif invert:
             bits = gray.point(lambda v: 1 if v < threshold else 0, "1")
         else:
-            bits = gray.point(lambda v: 1 if v >= threshold else 0, "1")
+            bits = cut(gray).point(lambda v: 1 if v else 0, "1")
+        if mask is not None:
+            bits = ImageChops.subtract(bits.convert("L"), mask).point(
+                lambda v: 1 if v else 0, "1")
         frames.append((bits, max(MIN_DELAY_MS, delay)))
     return frames, threshold
 
@@ -203,6 +243,9 @@ def main():
     ap.add_argument("--dither", action="store_true", help="dither instead of a hard cut-off (photos)")
     ap.add_argument("--range", help="a:b keep only GIF frames a..b-1 (a short loop)")
     ap.add_argument("--pick", help="exact GIF frame numbers to keep, e.g. 52,54,56")
+    ap.add_argument("--mask-from", help="a:b frames showing only a fixed light; it is removed")
+    ap.add_argument("--region", help="x0,y0,x1,y1,T: cut-off T inside this box (output px)")
+    ap.add_argument("--mask-grow", type=int, default=1, help="grow that mask by N px")
     ap.add_argument("--crop", help="x0,y0,x1,y1 crop in source pixels before resizing")
     ap.add_argument("--local", action="store_true",
                     help="write src/local/ (git-ignored) instead of src/")
@@ -214,7 +257,11 @@ def main():
         frange = tuple(int(v) for v in args.range.split(":")) if args.range else None
         frames, thr = gif_frames(args.gif, args.size, args.frames, args.threshold,
                                  args.invert, args.dither, crop, frange,
-                                 [int(v) for v in args.pick.split(",")] if args.pick else None)
+                                 [int(v) for v in args.pick.split(",")] if args.pick else None,
+                                 tuple(int(v) for v in args.mask_from.split(":"))
+                                 if args.mask_from else None, args.mask_grow,
+                                 tuple(int(v) for v in args.region.split(","))
+                                 if args.region else None)
         print("dithered" if args.dither else f"threshold {thr}")
         write(frames, Path(args.gif).name, args.local)
     else:
