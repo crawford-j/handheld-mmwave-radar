@@ -14,9 +14,11 @@
  *
  * False triggers while setting the device up (reflections off the person
  * standing right next to it) are suppressed two ways:
- *   - arming delay: no alarm for ALERT_ARM_MS after power-up, or for
- *     ALERT_REARM_MS after the button is pressed (alert_rearm): mount the
- *     device, press the button, walk out of view while it counts down
+ *   - arming delay: no alarm for ALERT_REARM_MS after the button is
+ *     pressed or the device wakes from standby (alert_rearm): place the
+ *     device, press the button, walk out of view while it counts down.
+ *     (The firmware boots into standby; ALERT_ARM_MS is only a safe
+ *     initial value before the first alert_rearm.)
  *   - entry debounce: the nearest target must be inside R for
  *     ALERT_ENTER_FRAMES frames in a row (~0.36 s) before the alarm starts;
  *     a real person walking in still triggers almost at once.

@@ -116,7 +116,7 @@ static uint8_t open_menu(void)
 }
 
 /*
- * standby - long press: alarm off, radar view replaced by the STANDBY
+ * standby - at power-up and on a long press: alarm off, radar view replaced by the STANDBY
  * screen, until a short press or a screen tap. Radar frames are still read
  * (so the ring buffer doesn't overflow and the tracker stays current) but
  * nothing is shown or alarmed. Between interrupts the CPU sits in Idle
@@ -189,14 +189,17 @@ int main(void)
     uint8_t loaded = settings_load();   /* EEPROM, or defaults if invalid */
     settings_apply();
     touch_init();
-    ui_radar_init();
-    ui_note(loaded ? PSTR("LOADED") : PSTR("DEFAULTS"));
 
     tick_init();
     radar_init();
     buzzer_init();
     button_init();
     sei();                              /* enable interrupts (tick + USART RX) */
+
+    /* Power-up goes straight to standby: place the device, then press the
+     * button (or tap) to start the arming countdown. */
+    standby();
+    ui_note(loaded ? PSTR("LOADED") : PSTR("DEFAULTS"));
 
     uint32_t last_tick   = 0;
     uint32_t last_status = 0;
@@ -207,7 +210,7 @@ int main(void)
     uint16_t hz          = 0;
     uint16_t draw_max    = 0;           /* longest tick since last status (ms) */
     uint8_t  touch_was   = 1;           /* require a release before the first tap */
-    uint32_t note_until  = NOTE_MS;     /* clear the bottom-center note then   */
+    uint32_t note_until  = tick_ms() + NOTE_MS; /* clear the note then     */
     uint8_t  note_on     = 1;
 
     for (;;) {
