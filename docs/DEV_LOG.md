@@ -184,3 +184,10 @@ project, and the design report.
   converts a GIF into 1-bit 64 x 64 frames in flash, drawn at 2x. A
   default radar-scope animation is built in. Flash use went from 21.6 KB
   to 28.1 KB (86 %).
+- Bug found by the team: with the radar TX unplugged and the device
+  facing a wall, a ping stayed on screen at 13.6 ft (HZ 0, frame count
+  frozen, RAW = FLT). It was the last target from before the wire came
+  out. Confirm/hold count frames, so nothing aged out without frames, and
+  an active alarm would never have stopped. Fixed with a 1 s radar-lost
+  timeout: targets are dropped, the alarm clears and NO RADAR shows until
+  frames come back.
