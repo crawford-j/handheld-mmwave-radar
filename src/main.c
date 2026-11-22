@@ -24,6 +24,7 @@
 #include "track.h"
 #include "alert.h"
 #include "buzzer.h"
+#include "button.h"
 #include "ui.h"
 
 /* `make RADAR_SETUP=1` builds the one-time radar baud switch instead of the
@@ -77,6 +78,7 @@ int main(void)
     tick_init();
     radar_init();
     buzzer_init();
+    button_init();
     sei();                              /* enable interrupts (tick + USART RX) */
 
     uint32_t last_tick   = 0;
@@ -107,6 +109,14 @@ int main(void)
         if (have_new) {
             ui_set_targets();
             ui_alert_status(alert_update(now));
+            ui_mode_status(track_get_handheld(), track_device_moving());
+        }
+
+        /* D2 button: toggle mounted / handheld mode (moves to the touch
+         * menu in milestone 6). */
+        if (button_pressed(now)) {
+            track_set_handheld(!track_get_handheld());
+            ui_mode_status(track_get_handheld(), track_device_moving());
         }
 
 

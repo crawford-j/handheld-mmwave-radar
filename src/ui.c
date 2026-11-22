@@ -780,6 +780,24 @@ void ui_alert_status(uint8_t state)
 }
 
 /*
+ * ui_mode_status - bottom-center mode tag: "MOUNTED" or "HANDHELD" in gray,
+ * yellow while the handheld ego-motion hold-off is active (device turning).
+ * Redrawn only on change.
+ */
+void ui_mode_status(uint8_t handheld, uint8_t moving)
+{
+    static uint8_t shown = 0xFF;
+    uint8_t state = (uint8_t)((handheld << 1) | (moving ? 1 : 0));
+    if (state == shown) {
+        return;
+    }
+    shown = state;
+    const int16_t x = LCD_WIDTH / 2 - 4 * GFX_CHAR_W;            /* 8 chars, centered */
+    gfx_text_P(x, 231, handheld ? PSTR("HANDHELD") : PSTR(" MOUNTED"),
+               moving ? COLOR_YELLOW : C_STATUS, C_BG, 1);
+}
+
+/*
  * ui_debug_target - small readout of target 1 in the top bar: raw X/Y from
  * the radar and the filtered X/Y, in mm.
  */
