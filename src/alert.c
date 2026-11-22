@@ -14,7 +14,9 @@
  *
  * False triggers while setting the device up (reflections off the person
  * standing right next to it) are suppressed two ways:
- *   - arming delay: no alarm for ALERT_ARM_MS after power-up
+ *   - arming delay: no alarm for ALERT_ARM_MS after power-up, or for
+ *     ALERT_REARM_MS after the button is pressed (alert_rearm): mount the
+ *     device, press the button, walk out of view while it counts down
  *   - entry debounce: the nearest target must be inside R for
  *     ALERT_ENTER_FRAMES frames in a row (~0.36 s) before the alarm starts;
  *     a real person walking in still triggers almost at once.
@@ -39,6 +41,7 @@ static uint8_t  muted;
 static uint8_t  active;
 static uint16_t nearest_mm;
 static uint8_t  inside_count;       /* consecutive frames inside R */
+static uint32_t arm_until = ALERT_ARM_MS;   /* no alarm before this time */
 
 void alert_set_radius(uint16_t mm)
 {
@@ -93,6 +96,18 @@ static uint16_t beep_period(uint16_t d)
 }
 
 /*
+ * alert_rearm - silence the alarm and restart the arming countdown, so the
+ * person who just set the device up can walk away without triggering it.
+ */
+void alert_rearm(uint32_t now_ms)
+{
+    arm_until = now_ms + ALERT_REARM_MS;
+    active = 0;
+    inside_count = 0;
+    buzzer_set_period(0);
+}
+
+/*
  * alert_update - recompute the alert from the current targets and set the
  * buzzer cadence. Called once per radar frame. Returns ALERT_ARMING during
  * the power-up delay, else ALERT_ON / ALERT_IDLE.
@@ -116,7 +131,7 @@ uint8_t alert_update(uint32_t now_ms)
         inside_count = 0;
     }
 
-    if (now_ms < ALERT_ARM_MS) {        /* tick starts at 0 at power-up */
+    if ((int32_t)(now_ms - arm_until) < 0) {    /* still arming (wrap-safe) */
         active = 0;
         buzzer_set_period(0);
         return ALERT_ARMING;
