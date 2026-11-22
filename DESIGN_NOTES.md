@@ -760,12 +760,23 @@ Uploads over the Uno bootloader (avrdude, 115200 baud) often fail
 verification on the first pass and succeed on a retry. Every recorded
 mismatch address ends in 0x2F or 0xAF: 0x00AF, 0x022F, 0x06AF, 0x202F,
 0x20AF and 0x32AF. That is always **byte 47 of a 128-byte flash page**, so
-it isn't random noise. The suspect is D1 (USART TX, used by the bootloader
-for read-back) also driving the TXS0108E channel to the radar's RX. The
-shifter's auto-direction edge accelerators can distort the line when it is
-driven through the Uno's 1 kΩ resistor. Workaround: `make flash` retries
-once automatically. To test: unplug the D1 → shifter wire as well as radar
-TX when uploading, and see whether the first pass verifies.
+it isn't random noise. Later mismatches (0x522F, 0x69AF, 0x6C2F, 0x05AF,
+0x0CAF) fit the same pattern.
+
+First suspect: D1 (USART TX, used by the bootloader for read-back) also
+driving the TXS0108E channel to the radar's RX. **Ruled out (2026-11-22):**
+with both D0 and D1 unplugged from the shifter, the first pass still failed
+at 0x0CAF.
+
+Then three verify-only passes (`avrdude -U flash:v:...`) on the same board
+all succeeded. So read-back is reliable, and the failed pass actually
+**wrote** a wrong byte, somewhere in the PC → USB-serial chip → bootloader
+path. It isn't the image size either: 21 KB builds failed the same way, and
+27.8 KB fits easily in the 31.5 KB beside the 0.5 KB bootloader (avrdude
+refuses an image that doesn't fit). Root cause not found; possible
+directions are the bootloader's page buffering or the 115200 baud error
+(+2.1 % on the 328P side). Workaround: a pass that verifies leaves a correct
+image, so `make flash` tries up to 4 times.
 
 ### Testing on dogs
 

@@ -200,3 +200,12 @@ project, and the design report.
   again at byte 47 of a 128-byte page (0x69AF, 0x6C2F, 0x05AF). A bigger
   image means more pages, so more chances to hit it. Still points at the
   D1 line; unplugging D1 during uploads remains the next thing to try.
+- Upload test with both radar UART wires (D0 and D1) unplugged: the first
+  pass still failed at byte 47 of a page (0x0CAF). Then three verify-only
+  passes against the board all succeeded. Conclusions: the D1 / level
+  shifter theory is wrong, and readback is reliable, so the fault is a
+  byte written wrongly on some passes (somewhere in the PC -> USB-serial
+  -> bootloader write path). It isn't image size: the 21 KB builds showed
+  it too, and 27.8 KB fits in the 31.5 KB left beside the 0.5 KB
+  bootloader. A pass that verifies leaves a correct image, so
+  `make flash` now tries up to 4 times. Root cause not found.
