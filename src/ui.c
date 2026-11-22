@@ -774,6 +774,10 @@ static uint32_t anim_next;          /* tick_ms() when the next frame is due */
 
 void ui_standby(void)
 {
+    /* Theme colors are normally set by ui_radar_init(); at power-up standby
+     * comes first, so without this c_label was still 0 (black) and the
+     * animation and text were drawn black on black. */
+    apply_theme();
     gfx_fill_screen(COLOR_BLACK);
     gfx_text_P((LCD_WIDTH - 7 * 3 * GFX_CHAR_W) / 2, 168, PSTR("STANDBY"), c_label, COLOR_BLACK, 3);
     gfx_text_P((LCD_WIDTH - 19 * GFX_CHAR_W) / 2, 204, PSTR("PRESS BUTTON TO ARM"),
