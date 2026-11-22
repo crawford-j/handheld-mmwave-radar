@@ -164,4 +164,18 @@ project, and the design report.
     armed only once it's placed and the button is pressed.
   - Mute moved out of the menu: tapping the speaker icon on the radar view
     toggles it, and it's saved right away.
-- Hardware test of these: pending.
+- Hardware test: standby boot and the mute icon both work.
+- The debug line then showed BAD 2 and OVF 1486. OVF counts bytes the
+  USART interrupt had to drop because the 128-byte ring buffer was full.
+  1486 bytes is about 50 frames, or 4.5 s of radar data, in total.
+  - Cause: full-screen redraws (standby screen, radar view on wake, menu
+    pages) take 0.5 to 1.5 s, and the main loop doesn't read the radar
+    while drawing. The buffer holds only ~0.4 s, so each redraw drops
+    data. BAD goes up only when a gap happens to cut a frame between its
+    header and tail.
+  - Before standby, the first redraw happened before the radar UART was
+    enabled, so the counters stayed at 0 until the menu was used.
+  - Impact: none visible. Data is only lost while the screen is changing
+    and nothing is shown, the parser resyncs on the next header, and
+    tracking is back within ~0.2 s (2 confirm frames). Judged harmless
+    and left as is.
