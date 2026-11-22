@@ -455,7 +455,34 @@ Alternatives considered:
 
 ## Touch calibration
 
-_TBD_
+The XPT2046 returns raw 12-bit voltages. Their mapping to pixels depends on
+the panel and on the display rotation, so it's measured once with the
+`TOUCH_CAL=1` program:
+- The user taps crosshairs at (20,20), (300,20), (300,220) and (20,220).
+  Each tap is 16 averaged reads, taken after 3 consecutive pressed reads.
+- The raw channel that changes most between the left and right targets is
+  the one along screen x (axis swap).
+- Each side is averaged and extrapolated linearly from 20 px in to the
+  screen edges.
+
+Result on this panel (2026-11-22):
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `TOUCH_SWAP_XY` | 1 | the controller's X channel runs along the screen's vertical axis (portrait panel, landscape MADCTL) |
+| `TOUCH_X0` / `TOUCH_X1` | 320 / 3906 | raw at screen x = 0 / 319 |
+| `TOUCH_Y0` / `TOUCH_Y1` | 234 / 3825 | raw at screen y = 0 / 239 |
+
+Neither axis is reversed. That's about 3,600 counts over 320 px, ~11
+counts per pixel. Mapping: `sx = (raw − X0)·319/(X1 − X0)`, clamped.
+
+Reading details:
+- 12-bit differential (ratiometric) mode, which the datasheet recommends for
+  position and pressure.
+- The first conversion of each channel is discarded while the panel
+  settles, and the next 4 are averaged.
+- SPI drops to 1 MHz for each touch read.
+- A touch counts when Z1 ≥ 150.
 
 ## EEPROM settings format
 
