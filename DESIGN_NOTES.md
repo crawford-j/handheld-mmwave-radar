@@ -371,6 +371,24 @@ LD2450's own region filter (command 0x00C2, persistent in the radar). It
 could block a fixed rectangle in front of the antenna, if the ghosts turn
 out to cluster in one place.
 
+### Adjustable minimum range (2026-11-22)
+
+On the stand, sitting about 0.55 m behind the device made a target appear
+in front at ~1.8 ft. The radar picks up some signal from behind and can't
+tell front from back, so a person right behind it is reported as a close
+target in front. A foil sheet behind the module (as the manual's §7.1
+suggests) didn't remove it.
+
+The fixed 0.5 m gate became a setting: MIN in the menu, 0.5-1.5 m in 0.1 m
+steps, default 0.8 m, saved in EEPROM. Readings closer than MIN are dropped
+in the range gate (`track_set_min_range`). Trade-off: a real person inside
+MIN isn't shown either. For a room monitor that's acceptable, since anyone
+that close has already crossed the alert zone, and MIN is kept at least
+0.5 m inside the alert radius (enforced by the menu and by the EEPROM
+validity check) so the alarm can always fire. The area inside MIN is drawn
+black on the dome, and the pulse starts at its edge, so the display shows
+what the radar actually covers.
+
 ### No pings while arming, and standby (2026-11-22)
 
 With the device on its stand, the intended use is: place it, power it on
@@ -589,14 +607,20 @@ the brief requires (register-level, no `eeprom_*` library calls).
 - EEPM = 00 is the atomic erase + write, 3.4 ms per byte [Table 8-1].
 - The SPMEN wait is skipped, since the application never writes flash.
 
-**Image at address 0, 12 bytes:**
+**Image at address 0, 13 bytes (version 2):**
 
 | Byte | Content | Purpose |
 |---|---|---|
 | 0 | magic 0xA5 | a blank EEPROM reads 0xFF, so a never-written chip is rejected |
-| 1 | version 1 | bumped when `settings_t` changes, so an old layout isn't misread |
-| 2..10 | `settings_t`: units, radius (0.1 m), mute, debug, scan, theme, 3 custom color indices | |
-| 11 | ~(8-bit sum of bytes 0..10) | detects corruption or a half-finished save |
+| 1 | version 2 | bumped when `settings_t` changes, so an old layout isn't misread |
+| 2..11 | `settings_t`: units, radius (0.1 m), mute, debug, scan, theme, 3 custom color indices, minimum range (0.1 m) | |
+| 12 | ~(8-bit sum of bytes 0..11) | detects corruption or a half-finished save |
+
+Version 1 (12 bytes, no minimum range, checksum at byte 11) is still
+accepted: its fields are kept, the minimum range gets its default, and the
+next save writes version 2. This was the first time the layout changed, and
+the version byte did its job: the old block is recognized instead of being
+misread or thrown away.
 
 **Load:** the magic, version, checksum and every field's range must all
 pass. Otherwise the defaults are used, and the screen shows DEFAULTS
@@ -639,8 +663,8 @@ Final firmware (2026-11-22, avr-gcc -Os, `-ffunction-sections
 
 | Memory | Used | Total | % |
 |---|---|---|---|
-| Flash (.text + .data) | 28,340 B | 32,768 B | 86 % |
-| SRAM (.data + .bss) | 729 B | 2,048 B | 35 % |
+| Flash (.text + .data) | 28,582 B | 32,768 B | 87 % |
+| SRAM (.data + .bss) | 735 B | 2,048 B | 35 % |
 | Stack headroom | ~1,328 B | | |
 
 (Updated after the standby animation was added. 6,144 B of the flash is
