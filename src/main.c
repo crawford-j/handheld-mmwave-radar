@@ -239,12 +239,18 @@ int main(void)
             continue;
         }
 
-        /* Touch: a new tap anywhere on the radar view opens the menu. */
+        /* Touch: a tap on the speaker icon toggles mute (saved to EEPROM
+         * at once); a tap anywhere else opens the menu. */
         if ((now - last_touch) >= TOUCH_MS) {
             last_touch = now;
             int16_t tx, ty;
             uint8_t down = touch_read(&tx, &ty);
-            if (down && !touch_was) {
+            if (down && !touch_was && ui_sound_icon_hit(tx, ty)) {
+                settings.mute = !settings.mute;
+                alert_set_mute(settings.mute);
+                settings_save();        /* only the changed bytes are written */
+                ui_sound_icon();
+            } else if (down && !touch_was) {
                 if (open_menu()) {
                     ui_note(PSTR("SAVED"));
                     note_on = 1;

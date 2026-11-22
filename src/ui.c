@@ -662,14 +662,14 @@ static void apply_theme(void)
 }
 
 /*
- * draw_sound_icon - 20 x 16 px speaker in the top-right corner.
+ * ui_sound_icon - 20 x 16 px speaker in the top-right corner.
  *   body: 4 x 6 rectangle; cone: vertical lines growing from 6 to 16 px
  *   sound on : two short "wave" lines in the theme text color
  *   muted    : a red X where the waves would be
  */
 #define ICON_X  294
 #define ICON_Y  16
-static void draw_sound_icon(void)
+void ui_sound_icon(void)
 {
     const int16_t x = ICON_X, y = ICON_Y;
     uint16_t body = c_text;
@@ -692,6 +692,16 @@ static void draw_sound_icon(void)
         gfx_vline(x + 18, y + 2, 1, body);
         gfx_vline(x + 18, y + 13, 1, body);
     }
+}
+
+/*
+ * ui_sound_icon_hit - 1 if a tap at (x, y) is on the speaker icon. The hit
+ * box is the whole 42 x 44 px top-right corner, much larger than the
+ * 20 x 16 icon, so it works with the stylus and the small touch offset.
+ */
+uint8_t ui_sound_icon_hit(int16_t x, int16_t y)
+{
+    return x >= LCD_WIDTH - 42 && y < ICON_Y + 28;
 }
 
 /*
@@ -729,7 +739,7 @@ void ui_radar_init(void)
     } else {
         gfx_text_P(APEX_X - 2 * 6, APEX_Y + 14, PSTR("6M"), c_label, C_BG, 2);
     }
-    draw_sound_icon();
+    ui_sound_icon();
 
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
         pings[n].on = 0;
