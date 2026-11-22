@@ -751,12 +751,16 @@ void ui_scan_step(uint32_t now)
 
 /*
  * ui_alert_status - bottom line: zone radius (and MUTED) on the left; on the
- * right a red "ALERT" while active, a gray "ARMING" during the power-up
- * delay, blank otherwise. Redrawn only on change.
+ * right, an 8-character field:
+ *   "ARMING n" yellow, counting down the seconds left
+ *   "   ARMED" green, watching
+ *   "   ALERT" white on red, alarm on
+ * Redrawn only when the state or the countdown second changes.
  */
-void ui_alert_status(uint8_t state)
+void ui_alert_status(uint8_t state, uint8_t secs)
 {
-    if (state == alert_shown) {
+    uint8_t key = (state == ALERT_ARMING) ? (uint8_t)(0x10 + secs) : state;
+    if (key == alert_shown) {
         return;
     }
     if (alert_shown == 0xFF) {
@@ -768,15 +772,16 @@ void ui_alert_status(uint8_t state)
             gfx_text_P(x, 231, PSTR("  MUTED"), C_STATUS, C_BG, 1);
         }
     }
-    const int16_t x_right = LCD_WIDTH - 6 * GFX_CHAR_W - 4;     /* room for "ARMING" */
+    const int16_t x_right = LCD_WIDTH - 8 * GFX_CHAR_W - 4;     /* "ARMING n" */
     if (state == ALERT_ON) {
-        gfx_text_P(x_right, 231, PSTR(" ALERT"), COLOR_WHITE, COLOR_RED, 1);
+        gfx_text_P(x_right, 231, PSTR("   ALERT"), COLOR_WHITE, COLOR_RED, 1);
     } else if (state == ALERT_ARMING) {
-        gfx_text_P(x_right, 231, PSTR("ARMING"), C_STATUS, C_BG, 1);
+        int16_t x = gfx_text_P(x_right, 231, PSTR("ARMING "), COLOR_YELLOW, C_BG, 1);
+        gfx_char(x, 231, (char)('0' + (secs > 9 ? 9 : secs)), COLOR_YELLOW, C_BG, 1);
     } else {
-        gfx_text_P(x_right, 231, PSTR("      "), C_STATUS, C_BG, 1);
+        gfx_text_P(x_right, 231, PSTR("   ARMED"), COLOR_GREEN, C_BG, 1);
     }
-    alert_shown = state;
+    alert_shown = key;
 }
 
 /*

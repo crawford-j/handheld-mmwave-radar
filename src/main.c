@@ -108,14 +108,15 @@ int main(void)
 #endif
         if (have_new) {
             ui_set_targets();
-            ui_alert_status(alert_update(now));
+            alert_update(now);
+            ui_alert_status(alert_state(now), alert_arming_secs(now));
         }
 
         /* D2 button: re-arm. Silences the alarm and restarts the quiet
          * ARMING countdown, for walking away after mounting the device. */
         if (button_pressed()) {
             alert_rearm(now);
-            ui_alert_status(ALERT_ARMING);
+            ui_alert_status(alert_state(now), alert_arming_secs(now));
         }
 
 
@@ -132,6 +133,8 @@ int main(void)
         if ((now - last_debug) >= DEBUG_MS) {
             last_debug = now;
             ui_debug_target();
+            /* keeps the ARMING countdown ticking between radar frames */
+            ui_alert_status(alert_state(now), alert_arming_secs(now));
         }
 
         if ((now - last_status) >= STATUS_MS) {
