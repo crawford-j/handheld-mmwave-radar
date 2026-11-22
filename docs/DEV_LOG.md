@@ -141,3 +141,20 @@ history on GitHub has the step-by-step changes.
 **State at end of day:** all milestones complete. 21 KB flash, 716 B SRAM,
 no warnings. Next: a stable stand for the device (team), a Microchip Studio
 project, and the design report.
+
+**Stand and usage changes**
+- The team built a stand, so the device can be placed where it's needed
+  instead of propped up.
+- Feedback from using it on the stand:
+  - Pings during the arming countdown could be misread, so pings are now
+    hidden while ARMING. The tracker keeps running underneath.
+  - A power button was requested. A true power-off isn't possible from
+    firmware, because the radar and backlight are wired straight to the
+    supply. Added standby instead: hold the button 1.5 s to blank the
+    screen and disable the alarm, then press it (or tap the screen) to wake
+    and arm. A switch on the battery lead is the real off switch.
+  - Tracking through glass and thin walls is noisier and less accurate
+    than in open air. This is expected: walls and glass weaken and reflect
+    24 GHz, and coated windows block it almost completely. It's documented
+    as a limitation, not fixed in firmware.
+- Hardware test of both changes: pending.
