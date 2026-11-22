@@ -24,6 +24,7 @@ typedef struct {
 } track_t;
 
 void           track_update(const radar_frame_t *fr);
+void           track_reset(void);      /* forget all targets (radar lost) */
 const track_t *track_get(uint8_t n);
 
 #endif /* TRACK_H */

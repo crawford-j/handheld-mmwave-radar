@@ -71,6 +71,22 @@ static slot_t  slots[RADAR_TARGETS];
 static track_t out[RADAR_TARGETS];
 
 /*
+ * track_reset - drop every target at once. Used when the radar stops
+ * sending: confirm/hold count frames, so without frames a target would
+ * otherwise stay on screen (and in the alarm) forever.
+ */
+void track_reset(void)
+{
+    for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
+        slots[n].hits = slots[n].misses = 0;
+        slots[n].hist_n = slots[n].hist_i = 0;
+        out[n].shown = 0;
+        out[n].raw_ok = 0;
+        out[n].mx = out[n].my = 0;
+    }
+}
+
+/*
  * iabs16 - absolute value for int16 differences.
  */
 static int16_t iabs16(int16_t v)
