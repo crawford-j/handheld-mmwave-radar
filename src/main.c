@@ -62,6 +62,7 @@
 #define DEBUG_MS        200     /* raw vs filtered readout + arming refresh  */
 #define RATE_WINDOW_MS  1000    /* frame-rate measurement window             */
 #define TOUCH_MS        50      /* touch-screen poll in the radar view       */
+#define NOTE_MS         3000    /* how long LOADED / DEFAULTS / SAVED shows  */
 
 static radar_frame_t frame;     /* latest decoded frame (static: off the stack) */
 
@@ -96,18 +97,21 @@ static void menu_idle(void)
 }
 
 /*
- * open_menu - silence the alarm, run the menu, then apply the settings,
- * redraw the radar view and re-arm (8 s countdown), so changing settings
- * at the device never sets the alarm off.
+ * open_menu - silence the alarm, run the menu, then save the settings to
+ * EEPROM if they changed, apply them, redraw the radar view and re-arm
+ * (8 s countdown), so changing settings at the device never sets the alarm
+ * off. Returns 1 if the settings were saved.
  */
-static void open_menu(void)
+static uint8_t open_menu(void)
 {
     alert_rearm(tick_ms());
     menu_run(menu_idle);
+    uint8_t saved = settings_save();
     settings_apply();
     ui_radar_init();
     alert_rearm(tick_ms());
     ui_alert_status(alert_state(tick_ms()), alert_arming_secs(tick_ms()));
+    return saved;
 }
 
 /*
@@ -135,10 +139,11 @@ int main(void)
     touch_cal_run();                    /* never returns */
 #endif
 
-    settings_defaults();
+    uint8_t loaded = settings_load();   /* EEPROM, or defaults if invalid */
     settings_apply();
     touch_init();
     ui_radar_init();
+    ui_note(loaded ? PSTR("LOADED") : PSTR("DEFAULTS"));
 
     tick_init();
     radar_init();
@@ -155,6 +160,8 @@ int main(void)
     uint16_t hz          = 0;
     uint16_t draw_max    = 0;           /* longest tick since last status (ms) */
     uint8_t  touch_was   = 1;           /* require a release before the first tap */
+    uint32_t note_until  = NOTE_MS;     /* clear the bottom-center note then   */
+    uint8_t  note_on     = 1;
 
     for (;;) {
         uint32_t now = tick_ms();
@@ -180,11 +187,20 @@ int main(void)
             int16_t tx, ty;
             uint8_t down = touch_read(&tx, &ty);
             if (down && !touch_was) {
-                open_menu();
+                if (open_menu()) {
+                    ui_note(PSTR("SAVED"));
+                    note_on = 1;
+                    note_until = tick_ms() + NOTE_MS;
+                }
                 last_status = last_debug = 0;   /* redraw the debug lines */
                 down = 1;                       /* wait for a release again */
             }
             touch_was = down;
+        }
+
+        if (note_on && (int32_t)(now - note_until) >= 0) {
+            ui_note(0);
+            note_on = 0;
         }
 
         if ((now - last_tick) >= FRAME_TICK_MS) {
