@@ -13,13 +13,15 @@
  * TOUCH_X0/X1   : raw reading at screen x = 0 and x = 319.
  * TOUCH_Y0/Y1   : raw reading at screen y = 0 and y = 239.
  * A reversed axis just has X0 > X1 (or Y0 > Y1); the mapping handles it.
- * Placeholder values until the calibration run on this panel. */
+ * Measured on this panel with TOUCH_CAL=1 on 2026-11-22: the controller's
+ * X channel runs along the screen's vertical axis (portrait panel used in
+ * landscape), and neither axis is reversed. */
 #ifndef TOUCH_SWAP_XY
 #define TOUCH_SWAP_XY  1
-#define TOUCH_X0       200
-#define TOUCH_X1       3900
-#define TOUCH_Y0       200
-#define TOUCH_Y1       3900
+#define TOUCH_X0       320
+#define TOUCH_X1       3906
+#define TOUCH_Y0       234
+#define TOUCH_Y1       3825
 #endif
 
 /* Pressure threshold on Z1: higher Z1 means a firmer touch [XPT2046
