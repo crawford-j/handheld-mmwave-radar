@@ -740,6 +740,19 @@ void ui_radar_init(void)
 }
 
 /*
+ * ui_standby - mostly black screen while in standby (the backlight is
+ * hard-wired, so black is as dark as the panel gets). ui_radar_init()
+ * redraws the radar view on wake.
+ */
+void ui_standby(void)
+{
+    gfx_fill_screen(COLOR_BLACK);
+    gfx_text_P((LCD_WIDTH - 7 * 3 * GFX_CHAR_W) / 2, 92, PSTR("STANDBY"), c_label, COLOR_BLACK, 3);
+    gfx_text_P((LCD_WIDTH - 19 * GFX_CHAR_W) / 2, 132, PSTR("PRESS BUTTON TO ARM"),
+               C_STATUS, COLOR_BLACK, 1);
+}
+
+/*
  * ui_set_targets - take the filtered targets from track.c as new goals.
  * Called once per radar frame; drawing happens in ui_animate().
  * visible = 0 hides every ping (used while ARMING: the tracker keeps

@@ -9,7 +9,7 @@
  *              -> alert.c      (zone, hysteresis, arming) -> buzzer.c
  *              -> ui.c         (dome, scan, gliding pings)
  *   touch tap  -> menu.c       (settings, themes)  -> settings.c
- *   D2 button  -> re-arm the alarm
+ *   D2 button  -> short: re-arm the alarm; long (1.5 s): standby
  *
  * Build options (Makefile): DEMO=1 synthetic targets, RADAR_SETUP=1 radar
  * baud tool, TOUCH_CAL=1 touch calibration. Earlier milestone screens are
@@ -18,6 +18,7 @@
 
 #include "board.h"
 #include <avr/interrupt.h>
+#include <avr/sleep.h>
 #include "spi.h"
 #include "ili9341.h"
 #include "tick.h"
@@ -115,6 +116,52 @@ static uint8_t open_menu(void)
 }
 
 /*
+ * standby - long press: alarm off, radar view replaced by the STANDBY
+ * screen, until a short press or a screen tap. Radar frames are still read
+ * (so the ring buffer doesn't overflow and the tracker stays current) but
+ * nothing is shown or alarmed. Between interrupts the CPU sits in Idle
+ * sleep: SM2:0 = 000, then SLEEP; Timer0 (1 ms) and USART RX still run
+ * and wake it [M328P §10.1, Table 10-1; SMCR §10.11.1].
+ *
+ * This is not a real power-off: the radar, display and backlight are
+ * powered straight from the battery and can't be switched by the MCU, so a
+ * hardware switch on the battery lead is the true off switch.
+ *
+ * On wake: redraw the radar view and start the 8 s arming countdown, so
+ * the device can be woken, then left alone to arm.
+ */
+static void standby(void)
+{
+    alert_rearm(tick_ms());             /* buzzer off, alarm cleared */
+    ui_standby();
+
+    uint8_t  touch_was  = 1;            /* need a release before a tap counts */
+    uint32_t last_touch = 0;
+    set_sleep_mode(SLEEP_MODE_IDLE);
+    for (;;) {
+        poll_radar();
+        if (button_event() != BTN_NONE) {
+            break;
+        }
+        uint32_t now = tick_ms();
+        if ((now - last_touch) >= TOUCH_MS) {
+            last_touch = now;
+            int16_t tx, ty;
+            uint8_t down = touch_read(&tx, &ty);
+            if (down && !touch_was) {
+                break;
+            }
+            touch_was = down;
+        }
+        sleep_mode();                   /* wakes on the next interrupt */
+    }
+
+    ui_radar_init();
+    alert_rearm(tick_ms());
+    ui_alert_status(alert_state(tick_ms()), alert_arming_secs(tick_ms()));
+}
+
+/*
  * main - init, then loop: parse radar frames, update targets and the alarm;
  * every 30 ms step the scan and glide the pings; poll touch every 50 ms
  * (a tap opens the menu); refresh debug lines on slower timers.
@@ -175,11 +222,18 @@ int main(void)
             ui_alert_status(state, alert_arming_secs(now));
         }
 
-        /* D2 button: re-arm. Silences the alarm and restarts the quiet
-         * ARMING countdown, for walking away after mounting the device. */
-        if (button_pressed()) {
+        /* D2 button. Short press: re-arm (silence the alarm and restart the
+         * quiet ARMING countdown, for walking away after mounting the
+         * device). Long press (1.5 s): standby until the next press. */
+        uint8_t ev = button_event();
+        if (ev == BTN_SHORT) {
             alert_rearm(now);
             ui_alert_status(alert_state(now), alert_arming_secs(now));
+        } else if (ev == BTN_LONG) {
+            standby();
+            touch_was = 1;                      /* wait for a release */
+            last_status = last_debug = 0;       /* redraw the debug lines */
+            continue;
         }
 
         /* Touch: a new tap anywhere on the radar view opens the menu. */

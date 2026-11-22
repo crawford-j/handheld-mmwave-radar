@@ -22,7 +22,8 @@ extern const uint16_t ui_palette[N_PALETTE] PROGMEM;
 
 void ui_radar_init(void);
 uint16_t ui_theme_base(uint8_t role);   /* 0 primary, 1 secondary, 2 tertiary */
-void ui_set_targets(uint8_t visible);   /* 0 = hide all pings (arming) */void ui_animate(void);
+void ui_set_targets(uint8_t visible);   /* 0 = hide all pings (arming) */
+void ui_standby(void);                  /* standby screen              */void ui_animate(void);
 void ui_scan_step(uint32_t now);
 void ui_status(const radar_stats_t *s, uint16_t hz, uint16_t draw_ms);
 void ui_debug_target(void);
