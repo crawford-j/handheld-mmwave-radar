@@ -371,6 +371,40 @@ LD2450's own region filter (command 0x00C2, persistent in the radar). It
 could block a fixed rectangle in front of the antenna, if the ghosts turn
 out to cluster in one place.
 
+### No pings while arming, and standby (2026-11-22)
+
+With the device on its stand, the intended use is: place it, power it on
+(or wake it), walk away during the countdown, and only then trust the
+display. Two changes support that:
+
+- **No pings while ARMING.** During the countdown the person setting the
+  device up, and setup reflections, showed up as pings, which could be
+  misread as intruders. Now `ui_set_targets(0)` hides every ping while
+  `alert_state()` is ARMING. The tracker keeps running underneath, so its
+  filter has settled by the time the countdown ends and pings appear at
+  once. The scan animation keeps running, to show the device is alive.
+- **Standby on a long press.** The button now tells short presses from
+  long ones in the 1 ms ISR: a press released before 1.5 s is a short
+  press (reported on release), a hold of 1.5 s is a long press (reported
+  as soon as 1.5 s is reached, so there's feedback without letting go; the
+  release after it is ignored). Short press = re-arm, as before. Long
+  press = standby: buzzer off, the screen goes black with STANDBY, and
+  radar frames are read but not shown or alarmed. A short press or a
+  screen tap wakes it, redraws the radar view and starts the 8 s arming
+  countdown.
+
+**Why standby and not power-off.** The radar (~100 mA class), the display
+and its backlight are wired straight to the 5 V supply; the backlight is
+hard-wired, as found with the dimming attempt. The MCU can't switch any of
+them off without new hardware (a MOSFET on the supply), and the brief says
+not to change the wiring. The MCU itself is a small part of the total, so
+in standby it uses Idle sleep (`SMCR` SM2:0 = 000, then `SLEEP`) between
+interrupts. Timer0 and USART RX keep running and wake it
+[M328P §10.1, Table 10-1]. Power-down sleep was not used: it stops the
+1 ms tick and the UART, and saves only a few mA next to the radar and
+backlight. The real off switch is a switch on the battery lead, outside
+the firmware.
+
 ### Handheld use: ego-motion (2026-11-21, removed 2026-11-22)
 
 Mounted on a stand, tracking and the alarm behaved well. Picked up and held
@@ -548,9 +582,11 @@ Final firmware (2026-11-22, avr-gcc -Os, `-ffunction-sections
 
 | Memory | Used | Total | % |
 |---|---|---|---|
-| Flash (.text + .data) | 21,068 B | 32,768 B | 64 % |
-| SRAM (.data + .bss) | 716 B | 2,048 B | 35 % |
-| Stack headroom | ~1,330 B | | |
+| Flash (.text + .data) | 21,470 B | 32,768 B | 66 % |
+| SRAM (.data + .bss) | 720 B | 2,048 B | 35 % |
+| Stack headroom | ~1,328 B | | |
+
+(Updated after standby was added; before it, 21,068 B flash and 716 B SRAM.)
 
 Largest SRAM users:
 
