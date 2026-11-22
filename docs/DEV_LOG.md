@@ -179,3 +179,8 @@ project, and the design report.
     and nothing is shown, the parser resyncs on the next header, and
     tracking is back within ~0.2 s (2 confirm frames). Judged harmless
     and left as is.
+- Team request: a GIF on the standby screen. The AVR can't decode GIF
+  (LZW needs ~12 KB of RAM), so a PC-side tool (`tools/gen_anim.py`)
+  converts a GIF into 1-bit 64 x 64 frames in flash, drawn at 2x. A
+  default radar-scope animation is built in. Flash use went from 21.6 KB
+  to 28.1 KB (86 %).
