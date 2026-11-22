@@ -239,4 +239,10 @@ project, and the design report.
     shrinks the light to a small ring and a thin streak. Used this.
 - A slow zoom clip (stare.gif) was also tried. Low contrast (dark skin,
   dark red jersey, dark green background) gave patchy blobs in 2 colors,
-  and the slow zoom barely changes across 9 frames. Kept the chalk toss.
+  and the slow zoom barely changes across 9 frames. On the previews the
+  chalk toss looked better.
+- After seeing both on the real screen, the team chose the stare instead:
+  frames 26-50 (every 3rd), cropped to the face, cut-off 28, 80 x 66 px,
+  5.9 KB. Firmware 28.2 KB. Lesson: the previews undersold it; the small
+  screen and the theme color make the low-contrast frames read better
+  than they do enlarged on a PC.
