@@ -157,4 +157,11 @@ project, and the design report.
     than in open air. This is expected: walls and glass weaken and reflect
     24 GHz, and coated windows block it almost completely. It's documented
     as a limitation, not fixed in firmware.
-- Hardware test of both changes: pending.
+- Hardware test: pings hidden while arming, and standby / wake by
+  button and by tap, all worked as intended.
+- Follow-up requests from that test:
+  - Boot into standby instead of a 5 s arming countdown, so the device is
+    armed only once it's placed and the button is pressed.
+  - Mute moved out of the menu: tapping the speaker icon on the radar view
+    toggles it, and it's saved right away.
+- Hardware test of these: pending.
