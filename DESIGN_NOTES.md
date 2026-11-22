@@ -432,6 +432,21 @@ That's well under the radar buffer's ~0.4 s, so the standby loop still
 keeps up with the radar. Without a GIF, the tool generates a radar-scope
 animation, so the build never depends on an external file.
 
+The team's GIFs were NBA broadcast clips, which can't go in the public
+repo. So the source GIFs are git-ignored, and `--local` writes the frames
+to `src/local/` (also git-ignored); the Makefile builds that instead of the
+built-in animation when it exists (`-DANIM_LOCAL=1` picks the matching
+header). The published firmware keeps the radar-scope animation.
+
+Choosing the clip: both GIFs were photos, which is the hard case for 1 bit.
+Previews of each option (`--preview`) were compared before flashing:
+- hard threshold beat dithering: the clips are dark, and dithering turned
+  them into noise;
+- cropping to the subject and keeping a short range of frames (`--range`)
+  mattered most. heat.gif frames 0–17 (the close-up) at 80 x 62 px, 9
+  frames, 5.6 KB, worked well; the dance clip stayed noisy because the
+  crowd behind the player is as bright as he is.
+
 Alternatives: RGB565 frames (16x the flash, 2 frames at most), or run-
 length encoding (smaller, but a simple 1-bit frame is easier to explain
 and 6 KB fit).
