@@ -412,6 +412,15 @@ handheld mode:
 Known limit: with a single person in view, a turn and that person walking
 sideways look the same. Only a gyro can tell them apart.
 
+Testing on 2026-11-21: handheld mode worked well, except for a recurring
+ghost at ~0.6 m while pointed at empty space. It's consistent with
+reflections off the holder's hand, wrist and forearm, which sit just below
+the radar inside its ±35° elevation cone, bouncing off the plate edge. In
+handheld mode only, the minimum range is raised from 0.5 m to **0.8 m**
+(`HH_MIN_RANGE_MM`). Mounted mode keeps the brief's 0.5 m. The radar's own
+region filter (0x00C2) was not used, because it's stored in the radar and
+would also affect mounted mode.
+
 ## Buzzer tone (Timer2)
 
 A passive buzzer needs an AC drive at audio frequency. Timer2 makes it in
