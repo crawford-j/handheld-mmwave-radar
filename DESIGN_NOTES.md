@@ -371,6 +371,47 @@ LD2450's own region filter (command 0x00C2, persistent in the radar). It
 could block a fixed rectangle in front of the antenna, if the ghosts turn
 out to cluster in one place.
 
+### Handheld use: ego-motion (2026-11-21)
+
+Mounted on a stand, tracking and the alarm behaved well. Picked up and held
+at arm's length, the display filled with false targets and the alarm
+triggered. Cause: the LD2450 separates people from the room by motion, so
+when the radar itself moves, walls and furniture appear to move and are
+reported as targets. The manual warns about exactly this (§7.1: shaking of
+the radar affects detection). The device has no gyro, so the firmware can't
+measure its own rotation, and a turn looks identical to everyone in view
+moving the other way.
+
+Options considered:
+
+| Option | Pros | Cons |
+|---|---|---|
+| Add an MPU-6050 gyro (I²C on A4/A5) | measures yaw directly; can hold off during turns and rotate tracks back to compensate | extra hardware, new driver, beyond the original feature list, schedule risk before Dec 9 |
+| Firmware-only handheld mode | no hardware | can only infer motion, and fails with a single target |
+| Mounted-only | simplest | drops the "handheld" use the brief describes |
+
+Chosen for now: a **firmware-only handheld mode**, toggled with the D2
+button and shown as MOUNTED/HANDHELD at the bottom center. It is to be
+dropped in favor of mounted-only if testing shows it isn't good enough. In
+handheld mode:
+- Every new target needs 5 frames in a row (~0.45 s), instead of 2, before
+  it's shown.
+- The alarm needs 8 frames inside the zone (~0.7 s) instead of 4.
+- **Ego-motion check, each frame:**
+  - The angular change of each tracked target, as seen from the radar, is
+    dθ = 1000·(p_old × p_new)/(|p_old|·|p_new|) mrad. The cross product
+    gives the sine of the angle between the two readings, and for small
+    angles sine ≈ angle.
+  - "Device moving" is flagged if two or more tracked targets all swing
+    the same way by ≥ 30 mrad (~1.7°) in one frame, or if two or more
+    targets appear or jump at once (the ghost burst that turning causes).
+  - While flagged, plus 6 frames (~0.55 s) after, no new target is
+    confirmed and no new alarm can start. Targets that are already
+    confirmed stay on screen. The mode tag turns yellow.
+
+Known limit: with a single person in view, a turn and that person walking
+sideways look the same. Only a gyro can tell them apart.
+
 ## Buzzer tone (Timer2)
 
 A passive buzzer needs an AC drive at audio frequency. Timer2 makes it in
