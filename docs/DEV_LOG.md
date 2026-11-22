@@ -246,3 +246,11 @@ project, and the design report.
   5.9 KB. Firmware 28.2 KB. Lesson: the previews undersold it; the small
   screen and the theme color make the low-contrast frames read better
   than they do enlarged on a PC.
+- Ghost while sitting behind the device: ~1.8 ft in front, with nothing
+  there. It's the radar's back lobe (it can't tell front from back). On
+  the stand the module sits above the plate, so nothing shields its back.
+  A flat foil sheet behind it, spaced 1-2 cm and taped, didn't help.
+- Fix: the minimum range became a menu setting (MIN, 0.5-1.5 m, default
+  0.8 m). The area inside it is black on the dome to match what the radar
+  covers. Adding it changed the EEPROM layout, so the settings block went
+  to version 2, with version 1 still read so saved settings carry over.
