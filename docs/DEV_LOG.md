@@ -237,3 +237,6 @@ project, and the design report.
     light's glow is mid-gray with a small white core, while the chalk is
     near-white, so a cut-off of 225 in the top 38 rows keeps the chalk and
     shrinks the light to a small ring and a thin streak. Used this.
+- A slow zoom clip (stare.gif) was also tried. Low contrast (dark skin,
+  dark red jersey, dark green background) gave patchy blobs in 2 colors,
+  and the slow zoom barely changes across 9 frames. Kept the chalk toss.
