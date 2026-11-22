@@ -9,9 +9,11 @@
 #include <stdint.h>
 #include "uart_radar.h"
 
-/* Targets closer than this are ignored: that is the person holding it. */
-#define MIN_RANGE_MM   500
-#define MAX_RANGE_MM   6000
+/* Range gate. The minimum is a setting (menu MIN, 0.5-1.5 m): closer
+ * readings are dropped. The radar can't tell front from back, so someone
+ * sitting right behind it shows up as a close target in front. */
+#define MIN_RANGE_DEFAULT_MM  800
+#define MAX_RANGE_MM          6000
 
 typedef struct {
     uint8_t  shown;     /* confirmed target, should be on screen       */
@@ -25,6 +27,8 @@ typedef struct {
 
 void           track_update(const radar_frame_t *fr);
 void           track_reset(void);      /* forget all targets (radar lost) */
+void           track_set_min_range(uint16_t mm);
+uint16_t       track_get_min_range(void);
 const track_t *track_get(uint8_t n);
 
 #endif /* TRACK_H */

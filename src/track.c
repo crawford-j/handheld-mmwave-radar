@@ -5,8 +5,10 @@
  * three target slots:
  *
  * 1. Range gate: a reading counts only if the slot is valid and the target
- *    is MIN_RANGE_MM..MAX_RANGE_MM away. Under 0.5 m is the person holding
- *    the device; 6 m is the radar's maximum range [LD2450 manual §2.1].
+ *    is min_range_mm..MAX_RANGE_MM away. The minimum (0.5-1.5 m, a menu
+ *    setting) drops the person setting the device up and the back-lobe
+ *    reflection of anyone sitting right behind it; 6 m is the radar's
+ *    maximum range [LD2450 manual §2.1].
  *
  * 2. Confirm / hold: a target is shown after CONFIRM_FRAMES good readings
  *    in a row (CONFIRM_NEAR_FRAMES when closer than NEAR_MM, where
@@ -69,6 +71,17 @@ typedef struct {
 
 static slot_t  slots[RADAR_TARGETS];
 static track_t out[RADAR_TARGETS];
+static uint16_t min_range_mm = MIN_RANGE_DEFAULT_MM;
+
+void track_set_min_range(uint16_t mm)
+{
+    min_range_mm = mm;
+}
+
+uint16_t track_get_min_range(void)
+{
+    return min_range_mm;
+}
 
 /*
  * track_reset - drop every target at once. Used when the radar stops
@@ -121,7 +134,7 @@ static void update_slot(uint8_t n, const radar_target_t *t)
         int32_t x = t->x;
         int32_t y = t->y;
         uint16_t d = isqrt32((uint32_t)(x * x) + (uint32_t)(y * y));
-        good = (d >= MIN_RANGE_MM && d <= MAX_RANGE_MM);
+        good = (d >= min_range_mm && d <= MAX_RANGE_MM);
     }
 
     /* Keep the unfiltered reading for the debug readout. */
