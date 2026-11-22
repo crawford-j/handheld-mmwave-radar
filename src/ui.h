@@ -24,6 +24,7 @@ void ui_radar_init(void);
 uint16_t ui_theme_base(uint8_t role);   /* 0 primary, 1 secondary, 2 tertiary */
 void ui_set_targets(uint8_t visible);   /* 0 = hide all pings (arming) */
 void ui_standby(void);                  /* standby screen              */
+void ui_standby_anim(uint32_t now);     /* next standby frame if due   */
 void ui_sound_icon(void);               /* redraw the mute icon        */
 uint8_t ui_sound_icon_hit(int16_t x, int16_t y);    /* tap on the icon? */
 void ui_animate(void);

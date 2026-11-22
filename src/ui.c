@@ -51,6 +51,7 @@
 #include "alert.h"
 #include "settings.h"
 #include "ui.h"
+#include "standby_anim.h"
 
 /* ---- Geometry ---- */
 #define APEX_X      160
@@ -754,12 +755,75 @@ void ui_radar_init(void)
  * hard-wired, so black is as dark as the panel gets). ui_radar_init()
  * redraws the radar view on wake.
  */
+/* Standby animation (standby_anim.c, made by tools/gen_anim.py): shown at
+ * 2x if it fits in a 160 x 136 box, else 1x, centered above the text. */
+#if ANIM_W * 2 <= 160 && ANIM_H * 2 <= 136
+#define ANIM_SCALE  2
+#else
+#define ANIM_SCALE  1
+#endif
+#define ANIM_X      ((LCD_WIDTH - ANIM_W * ANIM_SCALE) / 2)
+#define ANIM_Y      (16 + (136 - ANIM_H * ANIM_SCALE) / 2)
+
+static uint8_t  anim_frame;
+static uint32_t anim_next;          /* tick_ms() when the next frame is due */
+
 void ui_standby(void)
 {
     gfx_fill_screen(COLOR_BLACK);
-    gfx_text_P((LCD_WIDTH - 7 * 3 * GFX_CHAR_W) / 2, 92, PSTR("STANDBY"), c_label, COLOR_BLACK, 3);
-    gfx_text_P((LCD_WIDTH - 19 * GFX_CHAR_W) / 2, 132, PSTR("PRESS BUTTON TO ARM"),
+    gfx_text_P((LCD_WIDTH - 7 * 3 * GFX_CHAR_W) / 2, 168, PSTR("STANDBY"), c_label, COLOR_BLACK, 3);
+    gfx_text_P((LCD_WIDTH - 19 * GFX_CHAR_W) / 2, 204, PSTR("PRESS BUTTON TO ARM"),
                C_STATUS, COLOR_BLACK, 1);
+    anim_frame = 0;
+    anim_next  = 0;
+}
+
+/*
+ * draw_anim_frame - draw one 1-bit frame in a single window. Each source
+ * row is sent ANIM_SCALE times, and each run of equal bits is pushed as one
+ * ili9341_push_color() call (run length x scale pixels). A 2x 64 x 64 frame
+ * is 16384 pixels = 32 KB of SPI data, ~70 ms at 4 MHz.
+ */
+static void draw_anim_frame(uint8_t f)
+{
+    const uint8_t *bits = anim_bits[f];
+    uint16_t fg = c_label;
+
+    ili9341_set_window(ANIM_X, ANIM_Y,
+                       ANIM_X + ANIM_W * ANIM_SCALE - 1, ANIM_Y + ANIM_H * ANIM_SCALE - 1);
+    for (uint8_t y = 0; y < ANIM_H; y++) {
+        const uint8_t *row = bits + (uint16_t)y * ANIM_STRIDE;
+        for (uint8_t rep = 0; rep < ANIM_SCALE; rep++) {
+            uint8_t run = 0, cur = 0;
+            for (uint8_t x = 0; x < ANIM_W; x++) {
+                uint8_t on = (pgm_read_byte(&row[x >> 3]) >> (7 - (x & 7))) & 1;
+                if (x && on != cur) {
+                    ili9341_push_color(cur ? fg : COLOR_BLACK, (uint16_t)run * ANIM_SCALE);
+                    run = 0;
+                }
+                cur = on;
+                run++;
+            }
+            ili9341_push_color(cur ? fg : COLOR_BLACK, (uint16_t)run * ANIM_SCALE);
+        }
+    }
+    ili9341_end();
+}
+
+/*
+ * ui_standby_anim - call often from the standby loop; draws the next frame
+ * when its GIF delay has passed, then loops.
+ */
+void ui_standby_anim(uint32_t now)
+{
+    if ((int32_t)(now - anim_next) < 0) {
+        return;
+    }
+    draw_anim_frame(anim_frame);
+    anim_next = now + pgm_read_word(&anim_delay_ms[anim_frame]);
+    if (++anim_frame >= ANIM_FRAMES) {
+        anim_frame = 0;
+    }
 }
 
 /*

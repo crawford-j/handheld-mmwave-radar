@@ -116,9 +116,10 @@ static uint8_t open_menu(void)
 }
 
 /*
- * standby - at power-up and on a long press: alarm off, radar view replaced by the STANDBY
- * screen, until a short press or a screen tap. Radar frames are still read
- * (so the ring buffer doesn't overflow and the tracker stays current) but
+ * standby - at power-up and on a long press: alarm off, radar view
+ * replaced by the STANDBY screen with a looping animation, until a short
+ * press or a screen tap. Radar frames are still read (so the ring buffer
+ * doesn't overflow and the tracker stays current) but
  * nothing is shown or alarmed. Between interrupts the CPU sits in Idle
  * sleep: SM2:0 = 000, then SLEEP; Timer0 (1 ms) and USART RX still run
  * and wake it [M328P §10.1, Table 10-1; SMCR §10.11.1].
@@ -144,6 +145,7 @@ static void standby(void)
             break;
         }
         uint32_t now = tick_ms();
+        ui_standby_anim(now);           /* next animation frame when due */
         if ((now - last_touch) >= TOUCH_MS) {
             last_touch = now;
             int16_t tx, ty;
