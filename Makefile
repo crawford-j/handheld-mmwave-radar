@@ -1,4 +1,4 @@
-# Handheld mmWave radar - ATmega328P @ 16 MHz
+# mmWave presence radar - ATmega328P @ 16 MHz
 
 MCU     := atmega328p
 F_CPU   := 16000000UL

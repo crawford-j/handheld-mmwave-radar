@@ -1,5 +1,5 @@
 /*
- * board.h - Pin map and clock for the handheld radar (Arduino Uno R3).
+ * board.h - Pin map and clock for the mmWave presence radar (Arduino Uno R3).
  *
  * Wiring is fixed (see README.md). 3.3 V devices sit behind a TXS0108E level
  * shifter, except MISO (touch T_DO) and radar TX, which go straight to the AVR.
