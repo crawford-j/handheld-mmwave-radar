@@ -76,6 +76,15 @@ python tools/gen_anim.py my.gif --invert   # dark subject on light background
 python tools/gen_anim.py                   # back to the built-in radar
 ```
 
+GIFs that can't be published (e.g. broadcast clips) go through `--local`:
+the frames are written to `src/local/`, which is git-ignored and used by
+the build instead of the built-in animation. Delete `src/local/` to go back.
+Run `make clean` after adding or removing it.
+
+```sh
+python tools/gen_anim.py heat.gif --range 0:18 --frames 9 --crop 40,0,440,308 --size 80 --local
+```
+
 The radar's TX wire must be disconnected from D0 while uploading.
 
 ## Repository layout
