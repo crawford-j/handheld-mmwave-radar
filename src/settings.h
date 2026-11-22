@@ -25,6 +25,11 @@
 #define RADIUS_MAX_DM  40
 #define RADIUS_STEP_DM 5
 
+#define MINR_MIN_DM    5            /* minimum range limits, 0.1 m units */
+#define MINR_MAX_DM    15
+#define MINR_GAP_DM    5            /* keep MIN at least 0.5 m inside the
+                                       alert radius, or it could never fire */
+
 typedef struct {
     uint8_t units;                  /* UNITS_M / UNITS_FT                */
     uint8_t radius_dm;              /* alert radius, 0.1 m               */
@@ -34,6 +39,7 @@ typedef struct {
     uint8_t theme;                  /* THEME_*                           */
     uint8_t custom[3];              /* palette index: primary, secondary,
                                        tertiary (THEME_CUSTOM)           */
+    uint8_t min_dm;                 /* minimum range, 0.1 m (version 2)  */
 } settings_t;
 
 extern settings_t settings;
