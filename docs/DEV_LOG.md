@@ -254,3 +254,9 @@ project, and the design report.
   0.8 m). The area inside it is black on the dome to match what the radar
   covers. Adding it changed the EEPROM layout, so the settings block went
   to version 2, with version 1 still read so saved settings carry over.
+- Hardware test: flashed and working well enough for now. Further tuning
+  of MIN and the stationary false readings is planned with the full team
+  during the demo-video session.
+
+**State at end of day 2:** 28.6 KB flash (87 %), 735 B SRAM, no warnings.
+Next: tuning and demo videos (team), then the design report.
