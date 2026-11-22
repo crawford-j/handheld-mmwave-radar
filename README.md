@@ -17,11 +17,12 @@ controller.
   ghost rejection, gliding pings and direction arrows
 - Alert zone (default 1.5 m) with hysteresis: a passive buzzer beeps faster as
   a target gets closer, and holds a solid tone under 1 m
-- Arming delay at power-up, and a button to re-arm after mounting; no pings
-  are shown while arming
-- Standby: hold the button 1.5 s to blank the screen and disable the alarm;
-  press it (or tap the screen) to wake and re-arm
-- Touch menu (stylus): units (m / ft), alert radius, mute, debug overlay,
+- Boots into standby: place the device, press the button (or tap the
+  screen) to start an 8 s arming countdown; no pings are shown while arming
+- Standby again at any time: hold the button 1.5 s to blank the screen and
+  disable the alarm. A short press while running re-arms
+- Tap the speaker icon on the radar view to mute or unmute (saved)
+- Touch menu (stylus): units (m / ft), alert radius, debug overlay,
   scan style (pulse or sweep line), and color themes: 3 presets, or custom
   primary/secondary/tertiary colors from a palette
 - Settings saved to EEPROM (magic byte, version, checksum) and restored at
