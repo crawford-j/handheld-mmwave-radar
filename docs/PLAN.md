@@ -1,6 +1,6 @@
 # Firmware Plan
 
-Status: **approved 2026-11-21; milestones 1–5 done.** The sections below are
+Status: **approved 2026-11-21; all milestones done 2026-11-22.** The sections below are
 the original proposal. Where the built design differs, the "Status and scope
 changes" section at the end and DESIGN_NOTES.md describe what was actually
 done. Datasheet references use the short names in
@@ -163,8 +163,8 @@ meters, 1.5 m radius, unmuted, debug off.
 | 3. Radar view | done, then redesigned as a dome with a pulse scan |
 | 4. Smoothing + arrows | done (alpha-beta filter, glide, confirm/hold) |
 | 5. Alert zone + buzzer | done (1.5 m, solid tone < 1 m, arming, re-arm button) |
-| 6. Touch: raw → calibration → menu | next |
-| 7. EEPROM settings | after 6 |
+| 6. Touch: raw → calibration → menu | done (calibration tool, settings menu, themes and color picker) |
+| 7. EEPROM settings | done (register-level driver, magic/version/checksum, verified across power cycles) |
 
 Differences from the original proposal:
 - **Radar link:** runs at 250000 baud (radar at its factory 256000), not
