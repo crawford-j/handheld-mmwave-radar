@@ -13,6 +13,7 @@
 #define ALERT_SOLID_MM           1000    /* closer than this: continuous tone */
 #define ALERT_ARM_MS             5000    /* no alarm this long after power-up */
 #define ALERT_ENTER_FRAMES       4       /* frames inside the zone to trigger */
+#define ALERT_ENTER_HH_FRAMES    8       /* same, handheld mode (~0.7 s)      */
 
 /* alert_update() result */
 #define ALERT_IDLE    0
