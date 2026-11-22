@@ -82,7 +82,7 @@ the build instead of the built-in animation. Delete `src/local/` to go back.
 Run `make clean` after adding or removing it.
 
 ```sh
-python tools/gen_anim.py heat.gif --range 0:18 --frames 9 --crop 40,0,440,308 --size 80 --local
+python tools/gen_anim.py stare.gif --pick 26,29,32,35,38,41,44,47,50 --size 80 --crop 120,0,560,362 --threshold 28 --local
 ```
 
 The radar's TX wire must be disconnected from D0 while uploading.
