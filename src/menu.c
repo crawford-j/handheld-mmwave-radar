@@ -7,6 +7,7 @@
  *   SETTINGS                [ RESET ] [ BACK ]
  *   UNITS   [  M  ] [ FT  ]
  *   ZONE    [  -  ]  1.5m   [  +  ]
+ *   MIN     [  -  ]  0.8m   [  +  ]
  *   SCAN    [PULSE] [SWEEP]
  *   DEBUG   [ ON  ] [ OFF ]
  *   THEME   [RADAR][OCEAN][AMBER][CUSTM]
@@ -52,12 +53,13 @@
 
 #define ROW_UNITS   0
 #define ROW_ZONE    1
-#define ROW_SCAN    2
-#define ROW_DEBUG   3
-#define ROW_THEME   4
-#define N_ROWS      5
+#define ROW_MIN     2
+#define ROW_SCAN    3
+#define ROW_DEBUG   4
+#define ROW_THEME   5
+#define N_ROWS      6
 
-/* Zone row: [-] value [+] */
+/* Zone and MIN rows: [-] value [+] */
 #define ZONE_MINUS_X  COL_A
 #define ZONE_PM_W     44
 #define ZONE_VAL_X    (COL_A + ZONE_PM_W + 6)
@@ -82,11 +84,12 @@
 
 static const char s_units[]  PROGMEM = "UNITS";
 static const char s_zone[]   PROGMEM = "ZONE";
+static const char s_min[]    PROGMEM = "MIN";
 static const char s_scan[]   PROGMEM = "SCAN";
 static const char s_debug[]  PROGMEM = "DEBUG";
 static const char s_theme[]  PROGMEM = "THEME";
 static const char *const row_names[N_ROWS] PROGMEM = {
-    s_units, s_zone, s_scan, s_debug, s_theme
+    s_units, s_zone, s_min, s_scan, s_debug, s_theme
 };
 
 static const char t_radar[] PROGMEM = "RADAR";
@@ -175,14 +178,14 @@ static void wait_tap(int16_t *x, int16_t *y, menu_idle_fn idle)
 /* ---------------------------------------------------------------------- */
 
 /*
- * zone_text - the alert radius in the current units, e.g. "1.5m" / "4.9ft".
+ * dm_text - a distance in 0.1 m in the current units, e.g. "1.5m" / "4.9ft".
  */
-static void zone_text(char *buf)
+static void dm_text(char *buf, uint8_t dm)
 {
-    uint16_t mm = (uint16_t)settings.radius_dm * 100;
+    uint16_t mm = (uint16_t)dm * 100;
     uint16_t tenths = (settings.units == UNITS_FT)
                     ? (uint16_t)(((uint32_t)mm * 100 + 1524) / 3048)
-                    : settings.radius_dm;
+                    : dm;
     uint8_t i = 0;
     if (tenths >= 100) {
         buf[i++] = '0' + tenths / 100;
@@ -214,12 +217,14 @@ static void draw_row(uint8_t row)
         button(COL_A, y, BTN_W, BTN_H, PSTR("M"),  settings.units == UNITS_M);
         button(COL_B, y, BTN_W, BTN_H, PSTR("FT"), settings.units == UNITS_FT);
         break;
-    case ROW_ZONE: {
+    case ROW_ZONE:
+    case ROW_MIN: {
         char buf[8];
         button(ZONE_MINUS_X, y, ZONE_PM_W, BTN_H, PSTR("-"), 0);
         button(ZONE_PLUS_X,  y, ZONE_PM_W, BTN_H, PSTR("+"), 0);
-        zone_text(buf);
-        gfx_text(ZONE_VAL_X + 6, y + 6, buf, COLOR_YELLOW, C_BG, 2);
+        dm_text(buf, (row == ROW_ZONE) ? settings.radius_dm : settings.min_dm);
+        gfx_text(ZONE_VAL_X + 6, y + 6, buf,
+                 (row == ROW_ZONE) ? COLOR_YELLOW : COLOR_WHITE, C_BG, 2);
         break;
     }
     case ROW_SCAN:
@@ -352,7 +357,8 @@ void menu_run(menu_idle_fn idle)
             if (col_a || col_b) {
                 settings.units = col_b ? UNITS_FT : UNITS_M;
                 draw_row(ROW_UNITS);
-                draw_row(ROW_ZONE);     /* zone text changes units too */
+                draw_row(ROW_ZONE);     /* zone and MIN text change units too */
+                draw_row(ROW_MIN);
             }
             break;
         case ROW_ZONE:
@@ -360,10 +366,27 @@ void menu_run(menu_idle_fn idle)
                 settings.radius_dm > RADIUS_MIN_DM) {
                 settings.radius_dm -= RADIUS_STEP_DM;
                 draw_row(ROW_ZONE);
+                /* MIN must stay MINR_GAP_DM inside the zone: pull it in. */
+                if (settings.min_dm + MINR_GAP_DM > settings.radius_dm) {
+                    settings.min_dm = settings.radius_dm - MINR_GAP_DM;
+                    draw_row(ROW_MIN);
+                }
             } else if (x >= ZONE_PLUS_X && x < ZONE_PLUS_X + ZONE_PM_W &&
                        settings.radius_dm < RADIUS_MAX_DM) {
                 settings.radius_dm += RADIUS_STEP_DM;
                 draw_row(ROW_ZONE);
+            }
+            break;
+        case ROW_MIN:                   /* 0.1 m steps, 0.5-1.5 m */
+            if (x >= ZONE_MINUS_X && x < ZONE_MINUS_X + ZONE_PM_W &&
+                settings.min_dm > MINR_MIN_DM) {
+                settings.min_dm--;
+                draw_row(ROW_MIN);
+            } else if (x >= ZONE_PLUS_X && x < ZONE_PLUS_X + ZONE_PM_W &&
+                       settings.min_dm < MINR_MAX_DM &&
+                       settings.min_dm + 1 + MINR_GAP_DM <= settings.radius_dm) {
+                settings.min_dm++;
+                draw_row(ROW_MIN);
             }
             break;
         case ROW_SCAN:
