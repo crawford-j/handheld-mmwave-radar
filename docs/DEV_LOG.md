@@ -209,3 +209,14 @@ project, and the design report.
   it too, and 27.8 KB fits in the 31.5 KB left beside the 0.5 KB
   bootloader. A pass that verifies leaves a correct image, so
   `make flash` now tries up to 4 times. Root cause not found.
+- Bug: at power-up the standby screen was blank. Boot standby runs before
+  the radar view has ever set the theme colors, so the animation and text
+  were drawn in color 0 (black). `ui_standby()` now applies the theme
+  itself, so boot standby and long-press standby look the same.
+- The team picked a different part of heat.gif: frames 52-68, every other
+  frame, cropped to the head with a little background (`--pick`, added to
+  the tool for exact frame lists; each frame keeps the 200 ms it stands
+  in for). 9 frames at 80 x 65 px, 5.9 KB.
+- More colors were asked about: 4 shades (2 bits per pixel) would double
+  the flash per frame, so only ~4-5 frames of this size would fit.
+  Stayed with 2 colors and 9 frames.
