@@ -22,6 +22,7 @@ controller.
 - Standby again at any time: hold the button 1.5 s to blank the screen and
   disable the alarm. A short press while running re-arms
 - Tap the speaker icon on the radar view to mute or unmute (saved)
+- Looping animation on the standby screen, converted from any GIF
 - Touch menu (stylus): units (m / ft), alert radius, debug overlay,
   scan style (pulse or sweep line), and color themes: 3 presets, or custom
   primary/secondary/tertiary colors from a palette
@@ -67,13 +68,21 @@ make RADAR_SETUP=1   # one-time radar baud configuration tool
 make TOUCH_CAL=1     # touch-screen calibration tool
 ```
 
+To change the standby animation (needs Python with Pillow), then rebuild:
+
+```sh
+python tools/gen_anim.py my.gif            # light subject on dark background
+python tools/gen_anim.py my.gif --invert   # dark subject on light background
+python tools/gen_anim.py                   # back to the built-in radar
+```
+
 The radar's TX wire must be disconnected from D0 while uploading.
 
 ## Repository layout
 
 ```
 src/              firmware sources
-tools/            font and sine table generators (Python)
+tools/            font, sine table and standby animation generators (Python)
 docs/datasheets/  component datasheet sources
 docs/PLAN.md      module plan and milestones
 DESIGN_NOTES.md   design decisions, calculations, measurements and alternatives
