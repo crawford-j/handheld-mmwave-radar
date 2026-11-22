@@ -51,7 +51,11 @@
 #include "alert.h"
 #include "settings.h"
 #include "ui.h"
+#if ANIM_LOCAL                      /* tools/gen_anim.py --local, not in git */
+#include "local/standby_anim.h"
+#else
 #include "standby_anim.h"
+#endif
 
 /* ---- Geometry ---- */
 #define APEX_X      160

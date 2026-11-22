@@ -20,5 +20,9 @@ Release/
 *.atsuo
 *.cproj.user
 
+# Local standby animation and its source GIFs (not ours to publish)
+src/local/
+*.gif
+
 # Datasheets (copyrighted, see docs/datasheets/README.md)
 docs/datasheets/*.pdf

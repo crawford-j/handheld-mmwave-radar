@@ -23,6 +23,8 @@ Usage:
   python tools/gen_anim.py my.gif --invert       # dark subject on light bg
   python tools/gen_anim.py my.gif --threshold 100 --size 64 --frames 12
   python tools/gen_anim.py my.gif --dither --crop 100,0,380,280 --preview p.png
+  python tools/gen_anim.py my.gif --local        # src/local/, not committed
+                                                 # (delete src/local/ to undo)
 """
 
 import argparse
@@ -113,7 +115,12 @@ def pack(img):
     return out
 
 
-def write(frames, source):
+def write(frames, source, local=False):
+    out_c, out_h = OUT_C, OUT_H
+    if local:                                   # git-ignored copy, see Makefile
+        out_c = ROOT / "src" / "local" / "standby_anim.c"
+        out_h = ROOT / "src" / "local" / "standby_anim.h"
+        out_c.parent.mkdir(exist_ok=True)
     w, h = frames[0][0].size
     stride = (w + 7) // 8
     lines = [
@@ -143,9 +150,9 @@ def write(frames, source):
         "};",
         "",
     ]
-    OUT_C.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    out_c.write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
-    OUT_H.write_text(
+    out_h.write_text(
         "\n".join([
             "/*",
             " * standby_anim.h - size of the standby animation.",
@@ -173,6 +180,7 @@ def write(frames, source):
         newline="\n",
     )
     print(f"{len(frames)} frames, {w}x{h}, {stride * h * len(frames)} bytes of flash")
+    print(f"wrote {out_c.relative_to(ROOT)}; run make clean before make")
 
 
 def main():
@@ -185,6 +193,8 @@ def main():
     ap.add_argument("--dither", action="store_true", help="dither instead of a hard cut-off (photos)")
     ap.add_argument("--range", help="a:b keep only GIF frames a..b-1 (a short loop)")
     ap.add_argument("--crop", help="x0,y0,x1,y1 crop in source pixels before resizing")
+    ap.add_argument("--local", action="store_true",
+                    help="write src/local/ (git-ignored) instead of src/")
     ap.add_argument("--preview", help="also save a PNG strip of the frames (2x) here")
     args = ap.parse_args()
 
@@ -194,10 +204,10 @@ def main():
         frames, thr = gif_frames(args.gif, args.size, args.frames, args.threshold,
                                  args.invert, args.dither, crop, frange)
         print("dithered" if args.dither else f"threshold {thr}")
-        write(frames, Path(args.gif).name)
+        write(frames, Path(args.gif).name, args.local)
     else:
         frames = default_frames(args.size)
-        write(frames, "the built-in radar animation")
+        write(frames, "the built-in radar animation", args.local)
     if args.preview:
         w, h = frames[0][0].size
         strip = Image.new("L", (len(frames) * (2 * w + 4), 2 * h), 60)

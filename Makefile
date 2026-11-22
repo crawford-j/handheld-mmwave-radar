@@ -7,7 +7,18 @@ TARGET  := radar
 SRC_DIR := src
 BUILD   := build
 SRCS    := $(wildcard $(SRC_DIR)/*.c)
+
+# Local standby animation: `python tools/gen_anim.py my.gif --local` writes
+# src/local/ (git-ignored, for GIFs that can't go in the public repo). If it
+# exists it replaces the built-in src/standby_anim.c.
+ANIM_LOCAL := $(wildcard $(SRC_DIR)/local/standby_anim.c)
+ifneq ($(ANIM_LOCAL),)
+SRCS    := $(filter-out $(SRC_DIR)/standby_anim.c,$(SRCS))
+endif
 OBJS    := $(SRCS:$(SRC_DIR)/%.c=$(BUILD)/%.o)
+ifneq ($(ANIM_LOCAL),)
+OBJS    += $(BUILD)/local_standby_anim.o
+endif
 
 CC      := avr-gcc
 OBJCOPY := avr-objcopy
@@ -25,7 +36,7 @@ RADAR_SETUP_BAUD ?= 38400UL
 
 CFLAGS  := -mmcu=$(MCU) -DF_CPU=$(F_CPU) -DRADAR_BAUD=$(RADAR_BAUD) \
            -DRADAR_SETUP=$(RADAR_SETUP) -DRADAR_SETUP_BAUD=$(RADAR_SETUP_BAUD) \
-           -DDEMO=$(DEMO) -DTOUCH_CAL=$(TOUCH_CAL) \
+           -DDEMO=$(DEMO) -DTOUCH_CAL=$(TOUCH_CAL)            -DANIM_LOCAL=$(if $(ANIM_LOCAL),1,0) \
            -Os -std=gnu11 \
            -Wall -Wextra -ffunction-sections -fdata-sections -MMD -MP
 LDFLAGS := -mmcu=$(MCU) -Wl,--gc-sections
@@ -45,6 +56,9 @@ $(BUILD):
 	mkdir -p $(BUILD)
 
 $(BUILD)/%.o: $(SRC_DIR)/%.c | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/local_%.o: $(SRC_DIR)/local/%.c | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/$(TARGET).elf: $(OBJS)
