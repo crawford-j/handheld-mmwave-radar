@@ -64,8 +64,10 @@
 #define RATE_WINDOW_MS  1000    /* frame-rate measurement window             */
 #define TOUCH_MS        50      /* touch-screen poll in the radar view       */
 #define NOTE_MS         3000    /* how long LOADED / DEFAULTS / SAVED shows  */
+#define RADAR_LOST_MS   1000    /* no frame this long -> drop all targets    */
 
 static radar_frame_t frame;     /* latest decoded frame (static: off the stack) */
+static uint32_t last_frame_ms;  /* tick_ms() of the newest frame             */
 
 /*
  * poll_radar - feed every newly completed frame through the filter.
@@ -74,8 +76,9 @@ static radar_frame_t frame;     /* latest decoded frame (static: off the stack) 
 static uint8_t poll_radar(void)
 {
     uint8_t have_new = 0;
+    uint32_t now = tick_ms();
 #if DEMO
-    if (demo_frame(tick_ms(), &frame)) {
+    if (demo_frame(now, &frame)) {
         track_update(&frame);
         have_new = 1;
     }
@@ -85,6 +88,9 @@ static uint8_t poll_radar(void)
         have_new = 1;
     }
 #endif
+    if (have_new) {
+        last_frame_ms = now;
+    }
     return have_new;
 }
 
@@ -214,6 +220,7 @@ int main(void)
     uint8_t  touch_was   = 1;           /* require a release before the first tap */
     uint32_t note_until  = tick_ms() + NOTE_MS; /* clear the note then     */
     uint8_t  note_on     = 1;
+    uint8_t  radar_lost  = 0;
 
     for (;;) {
         uint32_t now = tick_ms();
@@ -221,10 +228,25 @@ int main(void)
         /* Every complete frame goes through the filter (about 11 per
          * second); the filtered targets become the pings' new goals. */
         if (poll_radar()) {
+            if (radar_lost) {
+                radar_lost = 0;
+                ui_note(0);
+            }
             alert_update(now);
             uint8_t state = alert_state(now);
             ui_set_targets(state != ALERT_ARMING);  /* no pings while arming */
             ui_alert_status(state, alert_arming_secs(now));
+        } else if (!radar_lost && (now - last_frame_ms) >= RADAR_LOST_MS) {
+            /* Radar stopped sending (TX unplugged, power, wiring). Confirm
+             * and hold count frames, so without this the last targets would
+             * stay on screen, and an active alarm would never stop. ~11
+             * frames are missed before this triggers. */
+            radar_lost = 1;
+            track_reset();
+            alert_update(now);                      /* no targets: alarm off */
+            ui_set_targets(0);
+            ui_note(PSTR("NO RADAR"));
+            note_on = 0;                            /* stays until frames return */
         }
 
         /* D2 button. Short press: re-arm (silence the alarm and restart the
@@ -236,6 +258,7 @@ int main(void)
             ui_alert_status(alert_state(now), alert_arming_secs(now));
         } else if (ev == BTN_LONG) {
             standby();
+            radar_lost = 0;                     /* re-check: screen was redrawn */
             touch_was = 1;                      /* wait for a release */
             last_status = last_debug = 0;       /* redraw the debug lines */
             continue;
@@ -259,6 +282,7 @@ int main(void)
                     note_until = tick_ms() + NOTE_MS;
                 }
                 last_status = last_debug = 0;   /* redraw the debug lines */
+                radar_lost = 0;                 /* re-check: screen was redrawn */
                 down = 1;                       /* wait for a release again */
             }
             touch_was = down;
