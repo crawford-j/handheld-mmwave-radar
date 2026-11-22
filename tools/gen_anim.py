@@ -58,11 +58,13 @@ def default_frames(size, n=12):
     return frames
 
 
-def gif_frames(path, size, max_frames, threshold, invert, dither, crop, frange):
+def gif_frames(path, size, max_frames, threshold, invert, dither, crop, frange, pick=None):
     src = Image.open(path)
     raw = []
     for i, fr in enumerate(ImageSequence.Iterator(src)):
         if frange and not (frange[0] <= i < frange[1]):
+            continue
+        if pick and i not in pick:
             continue
         delay = int(fr.info.get("duration", 100) or 100)
         rgba = fr.convert("RGBA")
@@ -73,6 +75,14 @@ def gif_frames(path, size, max_frames, threshold, invert, dither, crop, frange):
             gray = gray.crop(crop)
         gray.thumbnail((size, size), Image.LANCZOS)
         raw.append((gray, delay))
+
+    # Picked frames: each one is shown for the GIF frames it stands in for
+    # (the gap to the next pick), so the loop keeps the clip's real speed.
+    if pick:
+        pick = sorted(pick)
+        gaps = [b - a for a, b in zip(pick, pick[1:])]
+        gaps.append(gaps[-1] if gaps else 1)
+        raw = [(g, d * n) for (g, d), n in zip(raw, gaps)]
 
     # Too many frames: keep an even subset and stretch the delays to match,
     # so the loop keeps its original length.
@@ -192,6 +202,7 @@ def main():
     ap.add_argument("--invert", action="store_true", help="dark subject on light background")
     ap.add_argument("--dither", action="store_true", help="dither instead of a hard cut-off (photos)")
     ap.add_argument("--range", help="a:b keep only GIF frames a..b-1 (a short loop)")
+    ap.add_argument("--pick", help="exact GIF frame numbers to keep, e.g. 52,54,56")
     ap.add_argument("--crop", help="x0,y0,x1,y1 crop in source pixels before resizing")
     ap.add_argument("--local", action="store_true",
                     help="write src/local/ (git-ignored) instead of src/")
@@ -202,7 +213,8 @@ def main():
         crop = tuple(int(v) for v in args.crop.split(",")) if args.crop else None
         frange = tuple(int(v) for v in args.range.split(":")) if args.range else None
         frames, thr = gif_frames(args.gif, args.size, args.frames, args.threshold,
-                                 args.invert, args.dither, crop, frange)
+                                 args.invert, args.dither, crop, frange,
+                                 [int(v) for v in args.pick.split(",")] if args.pick else None)
         print("dithered" if args.dither else f"threshold {thr}")
         write(frames, Path(args.gif).name, args.local)
     else:
