@@ -371,7 +371,7 @@ LD2450's own region filter (command 0x00C2, persistent in the radar). It
 could block a fixed rectangle in front of the antenna, if the ghosts turn
 out to cluster in one place.
 
-### Handheld use: ego-motion (2026-11-21)
+### Handheld use: ego-motion (2026-11-21, removed 2026-11-22)
 
 Mounted on a stand, tracking and the alarm behaved well. Picked up and held
 at arm's length, the display filled with false targets and the alarm
@@ -420,6 +420,15 @@ handheld mode only, the minimum range is raised from 0.5 m to **0.8 m**
 (`HH_MIN_RANGE_MM`). Mounted mode keeps the brief's 0.5 m. The radar's own
 region filter (0x00C2) was not used, because it's stored in the radar and
 would also affect mounted mode.
+
+**Decision (2026-11-22): handheld mode removed.** It helped, but without a
+gyro it could only infer the device's motion. Each test turned up a new
+ghost case that needed another heuristic, and every part of it would have
+to be explained at check-off. It was removed (commit "revert: remove
+handheld mode"). The device is used set down or mounted, which is the
+radar's intended use, and the analysis above stays as a documented
+limitation. **Future work:** an MPU-6050 gyro on the free I²C pins (A4/A5)
+to measure yaw, hold off during turns and rotate tracks back.
 
 ## Buzzer tone (Timer2)
 
@@ -499,6 +508,26 @@ The feature was removed. Real dimming needs hardware: either a larger
 series resistor (permanently dimmer), or a transistor switching the
 backlight from a free PWM-capable pin (D5/D6). The debounced button driver
 (`button.c`) was kept for later use.
+
+### Alarm during setup, and the button (2026-11-22)
+
+Two problems came up in mounted use:
+- **Setup:** right after mounting, the person walking away is a real
+  target leaving the zone. The alarm kept going until they passed 1.75 m,
+  and the radar's tracker sometimes clung to them a little longer.
+- **Button:** fast repeated presses were missed. The button was polled
+  from the main loop, which can be busy drawing for 20+ ms, so short taps
+  fell between samples.
+
+Fixes:
+- **Re-arm:** the D2 button calls `alert_rearm()`. That silences the alarm
+  and restarts the quiet ARMING countdown (8 s, `ALERT_REARM_MS`), so the
+  workflow is: mount, press, walk away. This is a workflow fix rather than
+  more filter tuning, and it's predictable and easy to demonstrate.
+- **Button in the interrupt:** the button is now sampled every 1 ms inside
+  the Timer0 interrupt, next to the buzzer timing, and needs 8 ms of the
+  same level to count. Each debounced press increments a counter that the
+  main loop drains, so presses aren't lost while the screen is busy.
 
 ### Testing on dogs
 
