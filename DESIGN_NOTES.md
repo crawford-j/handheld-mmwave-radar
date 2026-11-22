@@ -556,6 +556,19 @@ Fixes:
   same level to count. Each debounced press increments a counter that the
   main loop drains, so presses aren't lost while the screen is busy.
 
+### Upload verification failures
+
+Uploads over the Uno bootloader (avrdude, 115200 baud) often fail
+verification on the first pass and succeed on a retry. Every recorded
+mismatch address ends in 0x2F or 0xAF: 0x00AF, 0x022F, 0x06AF, 0x202F,
+0x20AF and 0x32AF. That is always **byte 47 of a 128-byte flash page**, so
+it isn't random noise. The suspect is D1 (USART TX, used by the bootloader
+for read-back) also driving the TXS0108E channel to the radar's RX. The
+shifter's auto-direction edge accelerators can distort the line when it is
+driven through the Uno's 1 kΩ resistor. Workaround: `make flash` retries
+once automatically. To test: unplug the D1 → shifter wire as well as radar
+TX when uploading, and see whether the first pass verifies.
+
 ### Testing on dogs
 
 Early tracking tests used the family dogs. They're small, low (near the
