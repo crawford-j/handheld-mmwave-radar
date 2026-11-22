@@ -11,9 +11,6 @@
 
 /* Targets closer than this are ignored: that is the person holding it. */
 #define MIN_RANGE_MM   500
-/* Handheld: the holder's hand/arm reflections land at ~0.6 m, so ignore a
- * bit farther out while held. */
-#define HH_MIN_RANGE_MM 800
 #define MAX_RANGE_MM   6000
 
 typedef struct {
@@ -28,8 +25,5 @@ typedef struct {
 
 void           track_update(const radar_frame_t *fr);
 const track_t *track_get(uint8_t n);
-void           track_set_handheld(uint8_t on);
-uint8_t        track_get_handheld(void);
-uint8_t        track_device_moving(void);
 
 #endif /* TRACK_H */

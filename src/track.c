@@ -35,23 +35,6 @@
  *
  * 5. Motion: the last HIST smoothed positions are kept; the movement from
  *    the oldest to the newest (about 0.36 s) gives the arrow direction.
- *
- * 6. Handheld mode (track_set_handheld). The LD2450 separates people from
- *    the room by motion, so when the device itself moves the whole room
- *    looks like it moves and ghosts appear [LD2450 manual §7.1: the
- *    radar shaking affects detection]. Without a gyro the firmware cannot
- *    measure its own rotation, so it infers it. Each frame, before the
- *    slots are updated:
- *      - angular change of each tracked target, seen from the radar:
- *          dtheta (mrad) = 1000 * (p_old x p_new) / (|p_old| |p_new|)
- *        (the cross product gives the sine of the angle between readings)
- *      - "device moving" if two or more tracked targets all swing the same
- *        way by >= ANG_MIN_MRAD, or two or more targets appear / jump in
- *        the same frame (the ghost burst that turning causes)
- *    While moving, plus HOLDOFF_FRAMES after, no new target is confirmed
- *    (already-confirmed ones stay). In handheld mode every new target also
- *    needs CONFIRM_HH_FRAMES. Limitation: with a single person in view a
- *    turn looks exactly like that person walking; only a gyro fixes that.
  */
 
 #include "trig.h"
@@ -71,9 +54,6 @@
 #define JUMP_MM         1200    /* |raw - pred| above this -> reset         */
 #define HIST            5       /* positions kept (newest - oldest = 4 frames) */
 #define ARROW_MIN_MM    150     /* less movement than this -> no arrow      */
-#define CONFIRM_HH_FRAMES 5     /* handheld: ~0.45 s before any new target  */
-#define ANG_MIN_MRAD    30      /* per-frame swing counted as turning (~1.7 deg) */
-#define HOLDOFF_FRAMES  6       /* ~0.55 s of no new targets after motion   */
 
 #define FP_SHIFT        4       /* smoothed state is mm x 16 */
 
@@ -85,15 +65,10 @@ typedef struct {
     uint8_t hist_n;             /* entries in hist (up to HIST)       */
     uint8_t hist_i;             /* next write index                   */
     int16_t hist_x[HIST], hist_y[HIST];
-    uint8_t  prev_ok;           /* last frame had a good reading      */
-    int16_t  prev_x, prev_y;    /* that raw reading, mm               */
-    uint16_t prev_d;            /* its distance, mm                   */
 } slot_t;
 
 static slot_t  slots[RADAR_TARGETS];
 static track_t out[RADAR_TARGETS];
-static uint8_t handheld;        /* 1 = handheld mode                  */
-static uint8_t holdoff;         /* frames left of "device moving"     */
 
 /*
  * iabs16 - absolute value for int16 differences.
@@ -117,34 +92,6 @@ static void reset_slot(slot_t *s, track_t *o)
 }
 
 /*
- * gate - 1. Range gate: 1 if the reading is valid, in front, and
- * MIN_RANGE_MM..MAX_RANGE_MM away (HH_MIN_RANGE_MM.. in handheld mode);
- * its distance goes to *d.
- */
-static uint8_t gate(const radar_target_t *t, uint16_t *d)
-{
-    if (!t->valid || t->y <= 0) {
-        return 0;
-    }
-    int32_t x = t->x;
-    int32_t y = t->y;
-    *d = isqrt32((uint32_t)(x * x) + (uint32_t)(y * y));
-    uint16_t min_mm = handheld ? HH_MIN_RANGE_MM : MIN_RANGE_MM;
-    return (*d >= min_mm && *d <= MAX_RANGE_MM);
-}
-
-/*
- * pred_err - Manhattan distance (mm) between a reading and the slot's
- * prediction (position + velocity).
- */
-static int16_t pred_err(const slot_t *s, const radar_target_t *t)
-{
-    int32_t rx = ((int32_t)t->x << FP_SHIFT) - (s->sx + s->vx);
-    int32_t ry = ((int32_t)t->y << FP_SHIFT) - (s->sy + s->vy);
-    return iabs16((int16_t)(rx >> FP_SHIFT)) + iabs16((int16_t)(ry >> FP_SHIFT));
-}
-
-/*
  * update_slot - apply one frame's reading (or a miss) to slot n.
  */
 static void update_slot(uint8_t n, const radar_target_t *t)
@@ -152,8 +99,14 @@ static void update_slot(uint8_t n, const radar_target_t *t)
     slot_t  *s = &slots[n];
     track_t *o = &out[n];
 
-    uint16_t d = 0;
-    uint8_t good = gate(t, &d);
+    /* 1. Range gate. */
+    uint8_t good = 0;
+    if (t->valid && t->y > 0) {
+        int32_t x = t->x;
+        int32_t y = t->y;
+        uint16_t d = isqrt32((uint32_t)(x * x) + (uint32_t)(y * y));
+        good = (d >= MIN_RANGE_MM && d <= MAX_RANGE_MM);
+    }
 
     /* Keep the unfiltered reading for the debug readout. */
     o->raw_ok = good;
@@ -165,7 +118,6 @@ static void update_slot(uint8_t n, const radar_target_t *t)
     /* 2. Miss: hold the last position for a few frames, then drop it.
      * The velocity is zeroed so the target does not lurch when it returns. */
     if (!good) {
-        s->prev_ok = 0;
         s->vx = s->vy = 0;
         if (s->hits && ++s->misses >= HOLD_FRAMES) {
             reset_slot(s, o);
@@ -173,10 +125,6 @@ static void update_slot(uint8_t n, const radar_target_t *t)
         return;
     }
     s->misses = 0;
-    s->prev_ok = 1;
-    s->prev_x = t->x;
-    s->prev_y = t->y;
-    s->prev_d = d;
 
     int32_t px = s->sx + s->vx;         /* prediction */
     int32_t py = s->sy + s->vy;
@@ -218,10 +166,8 @@ static void update_slot(uint8_t n, const radar_target_t *t)
     o->x = (int16_t)(s->sx >> FP_SHIFT);
     o->y = (int16_t)(s->sy >> FP_SHIFT);
     o->dist = isqrt32((uint32_t)((int32_t)o->x * o->x) + (uint32_t)((int32_t)o->y * o->y));
-    uint8_t need = handheld ? CONFIRM_HH_FRAMES
-                 : (o->dist < NEAR_MM) ? CONFIRM_NEAR_FRAMES : CONFIRM_FRAMES;
-    if (!o->shown && holdoff == 0 && s->hits >= need) {
-        o->shown = 1;               /* new targets wait out "device moving" */
+    if (s->hits >= ((o->dist < NEAR_MM) ? CONFIRM_NEAR_FRAMES : CONFIRM_FRAMES)) {
+        o->shown = 1;
     }
 
     /* 5. Motion history (ring buffer of smoothed positions). */
@@ -245,89 +191,13 @@ static void update_slot(uint8_t n, const radar_target_t *t)
 }
 
 /*
- * detect_motion - 6. Handheld ego-motion check over all slots, using the
- * slots' state from the previous frame. Returns 1 if the device seems to
- * be turning or shaking.
- */
-static uint8_t detect_motion(const radar_frame_t *fr)
-{
-    uint8_t n_new = 0, n_tracked = 0, n_turn = 0, mixed = 0;
-    int8_t  dir = 0;
-
-    for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
-        const slot_t *s = &slots[n];
-        const radar_target_t *t = &fr->t[n];
-        uint16_t d;
-        if (!gate(t, &d)) {
-            continue;
-        }
-        if (s->hits == 0 || pred_err(s, t) > JUMP_MM) {
-            n_new++;                    /* appeared, or a different target */
-            continue;
-        }
-        if (!s->prev_ok) {
-            continue;
-        }
-        n_tracked++;
-
-        /* dtheta = 1000 * (p_old x p_new) / (|p_old| |p_new|), in mrad. */
-        int32_t cross = (int32_t)s->prev_x * t->y - (int32_t)s->prev_y * t->x;
-        int32_t dd = ((int32_t)s->prev_d * d) / 1000;
-        if (dd == 0) {
-            continue;
-        }
-        int32_t mrad = cross / dd;
-        if (mrad >= ANG_MIN_MRAD || mrad <= -ANG_MIN_MRAD) {
-            int8_t sg = (mrad > 0) ? 1 : -1;
-            if (n_turn == 0) {
-                dir = sg;
-            } else if (sg != dir) {
-                mixed = 1;
-            }
-            n_turn++;
-        }
-    }
-
-    return (n_tracked >= 2 && n_turn == n_tracked && !mixed) || n_new >= 2;
-}
-
-/*
  * track_update - process one radar frame.
  */
 void track_update(const radar_frame_t *fr)
 {
-    if (handheld && detect_motion(fr)) {
-        holdoff = HOLDOFF_FRAMES;
-    } else if (holdoff) {
-        holdoff--;
-    }
-
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
         update_slot(n, &fr->t[n]);
     }
-}
-
-/*
- * track_set_handheld - 1 = handheld mode (stricter, ego-motion check),
- * 0 = mounted.
- */
-void track_set_handheld(uint8_t on)
-{
-    handheld = on;
-    holdoff = 0;
-}
-
-uint8_t track_get_handheld(void)
-{
-    return handheld;
-}
-
-/*
- * track_device_moving - 1 while the handheld ego-motion hold-off is active.
- */
-uint8_t track_device_moving(void)
-{
-    return holdoff != 0;
 }
 
 /*

@@ -18,8 +18,6 @@
  *   - entry debounce: the nearest target must be inside R for
  *     ALERT_ENTER_FRAMES frames in a row (~0.36 s) before the alarm starts;
  *     a real person walking in still triggers almost at once.
- *   - handheld mode: entry needs ALERT_ENTER_HH_FRAMES (~0.7 s), and no
- *     new alarm can start while the tracker reports the device moving.
  *
  * Beep rate: linear in distance, from BEEP_FAR_MS at the zone edge down to
  * BEEP_NEAR_MS at ALERT_SOLID_MM (1.0 m):
@@ -110,9 +108,6 @@ uint8_t alert_update(uint32_t now_ms)
     }
 
     uint8_t inside = (nearest_mm != 0 && nearest_mm < radius_mm);
-    if (track_device_moving()) {
-        inside = 0;                     /* handheld: device turning, don't arm */
-    }
     if (inside) {
         if (inside_count < 255) {
             inside_count++;
@@ -128,8 +123,7 @@ uint8_t alert_update(uint32_t now_ms)
     }
 
     if (!active) {
-        uint8_t need = track_get_handheld() ? ALERT_ENTER_HH_FRAMES : ALERT_ENTER_FRAMES;
-        active = (inside_count >= need);
+        active = (inside_count >= ALERT_ENTER_FRAMES);
     } else if (nearest_mm == 0 || nearest_mm > radius_mm + ALERT_HYST_MM) {
         active = 0;
     }
