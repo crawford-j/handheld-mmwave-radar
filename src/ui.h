@@ -27,6 +27,7 @@ void ui_animate(void);
 void ui_scan_step(uint32_t now);
 void ui_status(const radar_stats_t *s, uint16_t hz, uint16_t draw_ms);
 void ui_debug_target(void);
+void ui_note(const char *msg_P);         /* flash string, 0 = clear */
 void ui_alert_status(uint8_t state, uint8_t arming_secs);   /* ALERT_* */
 
 #endif /* UI_H */

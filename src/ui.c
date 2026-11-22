@@ -941,6 +941,24 @@ void ui_alert_status(uint8_t state, uint8_t secs)
 }
 
 /*
+ * ui_note - short gray message at the bottom center (8 characters), e.g.
+ * "LOADED" / "DEFAULTS" at power-up or "SAVED" after the menu. Pass 0 to
+ * clear it.
+ */
+void ui_note(const char *msg_P)
+{
+    const int16_t x = LCD_WIDTH / 2 - 4 * GFX_CHAR_W;
+    gfx_text_P(x, 231, PSTR("        "), C_STATUS, C_BG, 1);
+    if (msg_P) {
+        uint8_t len = 0;
+        while (pgm_read_byte(&msg_P[len])) {
+            len++;
+        }
+        gfx_text_P(x + (8 - len) * GFX_CHAR_W / 2, 231, msg_P, c_text, C_BG, 1);
+    }
+}
+
+/*
  * ui_debug_target - small readout of target 1 in the top bar: raw X/Y from
  * the radar and the filtered X/Y, in mm.
  */
