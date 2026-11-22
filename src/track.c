@@ -118,7 +118,8 @@ static void reset_slot(slot_t *s, track_t *o)
 
 /*
  * gate - 1. Range gate: 1 if the reading is valid, in front, and
- * MIN_RANGE_MM..MAX_RANGE_MM away; its distance goes to *d.
+ * MIN_RANGE_MM..MAX_RANGE_MM away (HH_MIN_RANGE_MM.. in handheld mode);
+ * its distance goes to *d.
  */
 static uint8_t gate(const radar_target_t *t, uint16_t *d)
 {
@@ -128,7 +129,8 @@ static uint8_t gate(const radar_target_t *t, uint16_t *d)
     int32_t x = t->x;
     int32_t y = t->y;
     *d = isqrt32((uint32_t)(x * x) + (uint32_t)(y * y));
-    return (*d >= MIN_RANGE_MM && *d <= MAX_RANGE_MM);
+    uint16_t min_mm = handheld ? HH_MIN_RANGE_MM : MIN_RANGE_MM;
+    return (*d >= min_mm && *d <= MAX_RANGE_MM);
 }
 
 /*
