@@ -624,8 +624,8 @@ Final firmware (2026-11-22, avr-gcc -Os, `-ffunction-sections
 
 | Memory | Used | Total | % |
 |---|---|---|---|
-| Flash (.text + .data) | 28,128 B | 32,768 B | 86 % |
-| SRAM (.data + .bss) | 725 B | 2,048 B | 35 % |
+| Flash (.text + .data) | 28,340 B | 32,768 B | 86 % |
+| SRAM (.data + .bss) | 729 B | 2,048 B | 35 % |
 | Stack headroom | ~1,328 B | | |
 
 (Updated after the standby animation was added. 6,144 B of the flash is
@@ -721,6 +721,23 @@ Fixes:
   the Timer0 interrupt, next to the buzzer timing, and needs 8 ms of the
   same level to count. Each debounced press increments a counter that the
   main loop drains, so presses aren't lost while the screen is busy.
+
+### Frozen ping when the radar stops (fixed 2026-11-22)
+
+With the radar's TX wire unplugged, the screen kept showing a ping at
+13.6 ft with the device pointed at a wall: HZ 0, the frame counter stuck,
+and RAW equal to FLT. It was the last target from before the wire was
+pulled. Confirm and hold are counted in radar frames, so with no frames
+nothing ever aged out. Worse, an active alarm would also have kept
+sounding.
+
+Fix: `poll_radar()` records the time of the newest frame. If none arrives
+for `RADAR_LOST_MS` = 1000 ms (~11 missed frames), the main loop calls
+`track_reset()`, runs the alert once with no targets (alarm off), hides
+the pings and shows NO RADAR at the bottom until frames return. 1 s is
+long enough not to trip on the ~0.4–1.5 s screen-redraw gaps that are
+followed by fresh data, because the check runs only in the radar view's
+main loop, after any redraw has finished.
 
 ### Upload verification failures
 
