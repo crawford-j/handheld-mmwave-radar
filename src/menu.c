@@ -1,12 +1,12 @@
 /*
  * menu.c - Touch settings menu.
  *
- * Two pages, both sized for the stylus (buttons >= 28 px tall):
+ * Two pages, both sized for the stylus (buttons >= 28 px tall). Mute is
+ * not here: it is toggled by tapping the speaker icon on the radar view.
  *
  *   SETTINGS                [ RESET ] [ BACK ]
  *   UNITS   [  M  ] [ FT  ]
  *   ZONE    [  -  ]  1.5m   [  +  ]
- *   SOUND   [ ON  ] [MUTE ]
  *   SCAN    [PULSE] [SWEEP]
  *   DEBUG   [ ON  ] [ OFF ]
  *   THEME   [RADAR][OCEAN][AMBER][CUSTM]
@@ -52,11 +52,10 @@
 
 #define ROW_UNITS   0
 #define ROW_ZONE    1
-#define ROW_SOUND   2
-#define ROW_SCAN    3
-#define ROW_DEBUG   4
-#define ROW_THEME   5
-#define N_ROWS      6
+#define ROW_SCAN    2
+#define ROW_DEBUG   3
+#define ROW_THEME   4
+#define N_ROWS      5
 
 /* Zone row: [-] value [+] */
 #define ZONE_MINUS_X  COL_A
@@ -83,12 +82,11 @@
 
 static const char s_units[]  PROGMEM = "UNITS";
 static const char s_zone[]   PROGMEM = "ZONE";
-static const char s_sound[]  PROGMEM = "SOUND";
 static const char s_scan[]   PROGMEM = "SCAN";
 static const char s_debug[]  PROGMEM = "DEBUG";
 static const char s_theme[]  PROGMEM = "THEME";
 static const char *const row_names[N_ROWS] PROGMEM = {
-    s_units, s_zone, s_sound, s_scan, s_debug, s_theme
+    s_units, s_zone, s_scan, s_debug, s_theme
 };
 
 static const char t_radar[] PROGMEM = "RADAR";
@@ -224,10 +222,6 @@ static void draw_row(uint8_t row)
         gfx_text(ZONE_VAL_X + 6, y + 6, buf, COLOR_YELLOW, C_BG, 2);
         break;
     }
-    case ROW_SOUND:
-        button(COL_A, y, BTN_W, BTN_H, PSTR("ON"),   !settings.mute);
-        button(COL_B, y, BTN_W, BTN_H, PSTR("MUTE"), settings.mute);
-        break;
     case ROW_SCAN:
         button(COL_A, y, BTN_W, BTN_H, PSTR("PULSE"), settings.scan == SCAN_PULSE);
         button(COL_B, y, BTN_W, BTN_H, PSTR("SWEEP"), settings.scan == SCAN_SWEEP);
@@ -370,12 +364,6 @@ void menu_run(menu_idle_fn idle)
                        settings.radius_dm < RADIUS_MAX_DM) {
                 settings.radius_dm += RADIUS_STEP_DM;
                 draw_row(ROW_ZONE);
-            }
-            break;
-        case ROW_SOUND:
-            if (col_a || col_b) {
-                settings.mute = col_b;
-                draw_row(ROW_SOUND);
             }
             break;
         case ROW_SCAN:
