@@ -528,11 +528,59 @@ Alternatives considered:
 
 ## Timer assignments
 
-_TBD_
+| Timer | Use | Configuration |
+|---|---|---|
+| Timer0 | 1 ms system tick (`tick.c`) | CTC, clk/64, OCR0A = 249 → 16 MHz/64/250 = 1000 Hz [M328P §15.7.2]. The ISR also runs the buzzer beep timing and debounces the button. |
+| Timer1 | free in the final firmware | used only as a stopwatch in milestone 1 to measure the full-screen fill time (537 ms) |
+| Timer2 | buzzer tone on OC2B / D3 (`buzzer.c`) | CTC, clk/32, OCR2A = OCR2B = 124, toggle OC2B → 2000 Hz exactly [§18.7.2] |
+| USART0 | radar link | 250000 baud, normal speed, UBRR0 = 3; RX interrupt into a 128 B ring buffer |
+| SPI | display 4 MHz, touch 1 MHz | switched per transaction |
+
+Timer2 has to drive the buzzer because OC2B is the pin wired to it
+(PD3). Running the beep cadence and button sampling inside the existing
+1 ms tick avoids using another timer, and keeps both regular while the
+main loop is busy drawing.
 
 ## Memory budget
 
-_TBD_
+Final firmware (2026-11-22, avr-gcc -Os, `-ffunction-sections
+-fdata-sections --gc-sections`):
+
+| Memory | Used | Total | % |
+|---|---|---|---|
+| Flash (.text + .data) | 21,068 B | 32,768 B | 64 % |
+| SRAM (.data + .bss) | 716 B | 2,048 B | 35 % |
+| Stack headroom | ~1,330 B | | |
+
+Largest SRAM users:
+
+| Symbol | Bytes | What |
+|---|---|---|
+| `rb_buf` | 128 | radar UART ring buffer (~0.4 s of data) |
+| `slots` | 120 | tracker state: 3 × (position, velocity, history) |
+| `pings` | 96 | what is drawn per target (for erasing) |
+| `goals` | 57 | where each ping is gliding to |
+| `frame` | 51 | latest decoded radar frame |
+| `out` | 48 | filtered targets for the UI and alert |
+| `fill_lut` + `dim_lut` | 64 | dome gradient for the current theme |
+| `scratch` | 24 | frame being received |
+
+Stack: `-fstack-usage` puts the largest single frame at 134 B
+(`ui_animate`, which holds the next ping states). The deepest call chain is
+well under 400 B, so even with an ISR frame on top there's roughly 1 KB to
+spare.
+
+Everything constant lives in flash (PROGMEM): the 475 B font, the 182 B
+sine table, theme presets, the palette, and all UI strings (`PSTR`).
+`printf` is never linked; numbers are formatted by hand.
+
+The largest flash users are `ui_animate`, `track_update` (the alpha-beta
+filter and confirm/hold logic), `ui_radar_init` and the menu.
+
+The original plan estimated ~350 B of globals and 8–12 KB of flash. The
+final build is larger because of features added since (themes, touch menu,
+gliding, arrows, pulse scan), but it stays within the budget with a large
+margin.
 
 ## Things that didn't work
 
