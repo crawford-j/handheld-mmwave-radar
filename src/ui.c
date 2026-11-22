@@ -742,8 +742,11 @@ void ui_radar_init(void)
 /*
  * ui_set_targets - take the filtered targets from track.c as new goals.
  * Called once per radar frame; drawing happens in ui_animate().
+ * visible = 0 hides every ping (used while ARMING: the tracker keeps
+ * running so it is settled when the countdown ends, but the person setting
+ * the device up should not see themselves or setup reflections as targets).
  */
-void ui_set_targets(void)
+void ui_set_targets(uint8_t visible)
 {
     uint16_t radius = alert_get_radius();
 
@@ -751,7 +754,7 @@ void ui_set_targets(void)
         const track_t *t = track_get(n);
         goal_t *g = &goals[n];
         g->want = 0;
-        if (!t->shown) {
+        if (!visible || !t->shown) {
             continue;
         }
 

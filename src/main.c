@@ -169,9 +169,10 @@ int main(void)
         /* Every complete frame goes through the filter (about 11 per
          * second); the filtered targets become the pings' new goals. */
         if (poll_radar()) {
-            ui_set_targets();
             alert_update(now);
-            ui_alert_status(alert_state(now), alert_arming_secs(now));
+            uint8_t state = alert_state(now);
+            ui_set_targets(state != ALERT_ARMING);  /* no pings while arming */
+            ui_alert_status(state, alert_arming_secs(now));
         }
 
         /* D2 button: re-arm. Silences the alarm and restarts the quiet
