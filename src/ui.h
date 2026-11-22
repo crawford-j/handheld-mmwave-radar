@@ -15,11 +15,10 @@
 #define RADAR_X_SIGN 1
 #endif
 
-/* Scan animation: 1 = expanding pulse ring from the apex (sonar style),
- * 0 = rotating sweep line (the brief's original "rotating sweep line"). */
-#ifndef UI_SCAN_PULSE
-#define UI_SCAN_PULSE 1
-#endif
+/* Custom-theme swatches (RGB565, in flash), shared with the menu. */
+#include <avr/pgmspace.h>
+#include "settings.h"
+extern const uint16_t ui_palette[N_PALETTE] PROGMEM;
 
 void ui_radar_init(void);
 void ui_set_targets(void);

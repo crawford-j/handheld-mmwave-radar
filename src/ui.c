@@ -19,11 +19,23 @@
  * label, arrow or the pulse moves. Drawing and repairing use the same
  * function, so a repair never leaves stray pixels.
  *
- * Scan animation (UI_SCAN_PULSE, default 1): a ring expanding from the apex
- * to the edge, like a sonar pulse, drawn only inside the +/-60 degree cone
- * the radar covers. Its radius comes from the clock (PULSE_PX_PER_S), so
- * it keeps a steady speed even if a drawing step runs long. With
- * UI_SCAN_PULSE = 0 a sweep line bounces across the cone instead.
+ * Scan animation (settings.scan): SCAN_PULSE is a ring expanding from the
+ * apex to the edge, like a sonar pulse, drawn only inside the +/-60 degree
+ * cone the radar covers. Its radius comes from the clock (PULSE_PX_PER_S),
+ * so it keeps a steady speed even if a drawing step runs long. SCAN_SWEEP
+ * is a line bouncing across the cone (the brief's rotating sweep line).
+ *
+ * Themes (settings.theme): three base colors drive everything.
+ *   primary   - dome rim, rings, lines, cone edges, and the dome gradient
+ *   secondary - pings and the scan
+ *   tertiary  - text (range labels, distance labels)
+ * Shades are computed once in apply_theme(). The dome gradient becomes two
+ * 16-entry lookup tables, so bg_color_at() stays fast. Alert red is fixed
+ * in every theme.
+ *
+ * Units (settings.units): meters show 6 m with rings at 1.5/3/4.5 m; feet
+ * show 20 ft (6096 mm) with rings at 5/10/15 ft. Both sets fall at the same
+ * pixel radii (39/78/117/156 px), so only the labels change.
  *
  * Pings glide: each target has a goal (from track.c, ~11 updates/s) and a
  * drawn position that moves halfway to the goal on every animation tick, so
@@ -37,50 +49,83 @@
 #include "trig.h"
 #include "track.h"
 #include "alert.h"
+#include "settings.h"
 #include "ui.h"
 
 /* ---- Geometry ---- */
 #define APEX_X      160
 #define APEX_Y      200
-#define R_PX        156             /* dome radius in pixels = RANGE_MM */
-#define RANGE_MM    6000L
+#define R_PX        156             /* dome radius in pixels = range_mm */
+#define RANGE_M_MM  6000L           /* meters: 6 m at the rim           */
+#define RANGE_FT_MM 6096L           /* feet: 20 ft at the rim           */
 #define COV_DX      173             /* cone edge direction: tan(60) = 173/100 */
 #define COV_DY      100
 
 #define N_RINGS     3
-static const uint8_t ring_px[N_RINGS] PROGMEM = { 39, 78, 117 };   /* 1.5, 3, 4.5 m */
-static const char lbl0[] PROGMEM = "1.5";
-static const char lbl1[] PROGMEM = "3";
-static const char lbl2[] PROGMEM = "4.5";
-static const char lbl3[] PROGMEM = "6";
-static const char *const range_lbl[N_RINGS + 1] PROGMEM = { lbl0, lbl1, lbl2, lbl3 };
+static const uint8_t ring_px[N_RINGS] PROGMEM = { 39, 78, 117 };   /* 1.5/3/4.5 m, 5/10/15 ft */
+static const char lbl_m0[] PROGMEM = "1.5";
+static const char lbl_m1[] PROGMEM = "3";
+static const char lbl_m2[] PROGMEM = "4.5";
+static const char lbl_m3[] PROGMEM = "6";
+static const char lbl_f0[] PROGMEM = "5";
+static const char lbl_f1[] PROGMEM = "10";
+static const char lbl_f2[] PROGMEM = "15";
+static const char lbl_f3[] PROGMEM = "20";
+static const char *const range_lbl[2][N_RINGS + 1] PROGMEM = {
+    { lbl_m0, lbl_m1, lbl_m2, lbl_m3 },
+    { lbl_f0, lbl_f1, lbl_f2, lbl_f3 },
+};
+
+static int32_t range_mm = RANGE_M_MM;   /* distance at the rim, per units */
 
 /* Pulse: radius = PULSE_MIN + elapsed * PULSE_PX_PER_S, restarting at the
  * rim: (153 - 6) px / 70 px/s = 2.1 s per pulse. */
 #define PULSE_MIN       6
 #define PULSE_PX_PER_S  70
 
-/* Sweep (UI_SCAN_PULSE = 0): bounces inside the cone. */
+/* Sweep (SCAN_SWEEP): bounces inside the cone. */
 #define SWEEP_MAX   58
 #define SWEEP_STEP  2
 #define SWEEP_R     (R_PX - 3)
 
 /* ---- Colors ---- */
-#define GREEN6(g)   ((uint16_t)((g) & 0x3F) << 5)   /* RGB565 with only green set */
+/* Fixed in every theme. */
 #define C_BG        COLOR_BLACK
-#define C_EDGE      RGB565(80, 255, 80)     /* bright outer rim               */
-#define C_RING      RGB565(60, 200, 60)     /* dotted range rings             */
-#define C_LINE      RGB565(120, 230, 120)   /* dashed baseline / center line  */
-#define C_CONE      RGB565(40, 140, 40)     /* +/-60 degree coverage edges    */
 #define C_ALERT     RGB565(230, 30, 30)     /* alert-zone ring                */
-#define C_PULSE     RGB565(200, 255, 200)
-#define C_SWEEP     RGB565(160, 255, 160)
-#define C_TEXT      RGB565(150, 230, 150)
+#define C_PING_HOT  RGB565(255, 70, 70)     /* ping inside the alert zone     */
 #define C_STATUS    COLOR_GRAY
-#define C_PING      RGB565(190, 255, 190)
-#define C_PING_HALO RGB565(60, 170, 60)
-#define C_PING_HOT  RGB565(255, 70, 70)     /* inside the alert zone */
-#define C_LABEL     COLOR_WHITE
+
+/* Theme base colors: { primary, secondary, tertiary } per preset. */
+static const uint16_t theme_preset[3][3] PROGMEM = {
+    { RGB565(80, 255, 80),  RGB565(190, 255, 190), RGB565(210, 255, 210) },  /* RADAR */
+    { RGB565(0, 170, 255),  RGB565(230, 250, 255), RGB565(150, 220, 255) },  /* OCEAN */
+    { RGB565(255, 140, 0),  RGB565(255, 235, 140), RGB565(255, 210, 150) },  /* AMBER */
+};
+
+/* Swatches for the custom theme (index stored in settings.custom[]). */
+const uint16_t ui_palette[N_PALETTE] PROGMEM = {
+    RGB565(0, 255, 0),     /* green   */
+    RGB565(0, 255, 255),   /* cyan    */
+    RGB565(40, 120, 255),  /* blue    */
+    RGB565(160, 80, 255),  /* purple  */
+    RGB565(255, 0, 255),   /* magenta */
+    RGB565(255, 40, 40),   /* red     */
+    RGB565(255, 140, 0),   /* orange  */
+    RGB565(255, 230, 0),   /* yellow  */
+    RGB565(255, 255, 255), /* white   */
+};
+
+/* Derived theme colors, set by apply_theme(). */
+static uint16_t c_edge;             /* bright outer rim              */
+static uint16_t c_ring;             /* dotted range rings            */
+static uint16_t c_line;             /* dashed baseline / center line */
+static uint16_t c_cone;             /* +/-60 degree coverage edges   */
+static uint16_t c_pulse, c_sweep;   /* scan                          */
+static uint16_t c_ping, c_ping_halo;
+static uint16_t c_text;             /* range labels, debug values    */
+static uint16_t c_label;            /* ping distance labels          */
+static uint16_t fill_lut[16];       /* dome gradient inside the cone  */
+static uint16_t dim_lut[16];        /* same, outside the cone         */
 
 #define PING_R      3               /* dot radius             */
 #define HALO_R      5               /* glow ring radius       */
@@ -117,15 +162,11 @@ static ping_t pings[RADAR_TARGETS];
 static goal_t goals[RADAR_TARGETS];
 
 static int16_t  pulse_r;            /* radius of the drawn pulse ring, 0 = none */
-#if UI_SCAN_PULSE
 static uint32_t pulse_t0;           /* when the current pulse started           */
-#endif
-#if !UI_SCAN_PULSE
-static int16_t sweep_deg = -SWEEP_MAX;
-static int8_t  sweep_dir = 1;
-static int16_t sweep_ex, sweep_ey;
-#endif
-static uint8_t sweep_drawn;
+static int16_t  sweep_deg = -SWEEP_MAX;
+static int8_t   sweep_dir = 1;
+static int16_t  sweep_ex, sweep_ey;
+static uint8_t  sweep_drawn;
 
 static int16_t alert_r_px;          /* alert-zone ring radius, px (0 = none)   */
 static uint8_t alert_shown = 0xFF;  /* ALERT text state on screen (0xFF = none) */
@@ -148,8 +189,9 @@ static uint8_t alert_shown = 0xFF;  /* ALERT text state on screen (0xFF = none) 
  *   center line (dx == 0): dashes            -> line color
  *   cone edge: the 60-degree line, |dx*100 - dy*173| <= 86 (x is the major
  *     axis there, so one pixel per column)   -> cone color
- *   fill: green that brightens with d^2/R^2 (cheap radial gradient);
- *     outside the cone (|dx|*100 > dy*173) the same at one third
+ *   fill: the primary color, brightening with d^2/R^2 (a cheap radial
+ *     gradient) from a 16-entry table; outside the cone (|dx|*100 > dy*173)
+ *     a darker table
  */
 static uint16_t bg_color_at(int16_t x, int16_t y)
 {
@@ -165,12 +207,12 @@ static uint16_t bg_color_at(int16_t x, int16_t y)
         return C_BG;
     }
     if (d2 >= (int32_t)(R_PX - 1) * (R_PX - 1) - (R_PX - 1)) {
-        return C_EDGE;
+        return c_edge;
     }
 
     int16_t adx = (dx < 0) ? -dx : dx;
     if (dy == 0) {
-        return ((adx >> 2) & 1) ? C_LINE : C_BG;
+        return ((adx >> 2) & 1) ? c_line : C_BG;
     }
 
     if (alert_r_px) {
@@ -184,27 +226,24 @@ static uint16_t bg_color_at(int16_t x, int16_t y)
         int32_t r = pgm_read_byte(&ring_px[i]);
         if (d2 >= r * r - r && d2 <= r * r + r) {
             if ((x + y) & 2) {
-                return C_RING;
+                return c_ring;
             }
             break;
         }
     }
 
     if (dx == 0) {
-        return ((dy >> 2) & 1) ? C_LINE : C_BG;
+        return ((dy >> 2) & 1) ? c_line : C_BG;
     }
 
     /* |adx*100 - dy*173| <= 86 (= 173/2): within half a pixel of the edge. */
     int32_t e = (int32_t)adx * COV_DY - (int32_t)dy * COV_DX;
     if (e >= -(COV_DX / 2) && e <= COV_DX / 2) {
-        return C_CONE;
+        return c_cone;
     }
 
-    uint8_t g = (uint8_t)(6 + (d2 * 22) / R2);      /* 6..28 of 63 */
-    if (e > 0) {
-        g = g / 3 + 1;                               /* outside the cone */
-    }
-    return GREEN6(g);
+    uint8_t i = (uint8_t)((d2 * 15) / R2);           /* 0..15 */
+    return (e > 0) ? dim_lut[i] : fill_lut[i];
 }
 
 /*
@@ -266,7 +305,6 @@ static void draw_label(int16_t x, int16_t y, const char *s, uint8_t in_flash, ui
     ili9341_end();
 }
 
-#if UI_SCAN_PULSE
 /*
  * span - fill a 1-pixel-wide horizontal or vertical run (x0 <= x1,
  * y0 <= y1) with `color`, or with fn(x, y) per pixel if fn is set, through
@@ -351,7 +389,6 @@ static void arc_walk(int16_t r, uint16_t color, gfx_color_fn fn)
         err = nerr;
     }
 }
-#endif
 
 
 /* ---------------------------------------------------------------------- */
@@ -386,7 +423,6 @@ static box_t ping_box(const ping_t *p)
     return bx;
 }
 
-#if UI_SCAN_PULSE
 /*
  * box_near_arc - true if box bx may touch the circle of radius r around the
  * apex: compare the distance from the apex to the box center with r, using
@@ -401,10 +437,8 @@ static uint8_t box_near_arc(const box_t *bx, int16_t r)
     int16_t diff = d - r;
     return diff >= -tol && diff <= tol;
 }
-#endif
 
 
-#if !UI_SCAN_PULSE
 /*
  * box_near_line - true if box bx may touch the sweep line at angle `deg`
  * (perpendicular distance |dx*cos(a) - dy*sin(a)|, sin/cos in Q15).
@@ -419,7 +453,6 @@ static uint8_t box_near_line(const box_t *bx, int16_t deg)
     }
     return perp <= (bx->r - bx->l) / 2 + (bx->b - bx->t) / 2 + 1;
 }
-#endif
 
 
 /* ---------------------------------------------------------------------- */
@@ -438,9 +471,9 @@ static void draw_ping(uint8_t n)
         gfx_line(p->ax, p->ay, p->h1x, p->h1y, p->color);
         gfx_line(p->ax, p->ay, p->h2x, p->h2y, p->color);
     }
-    gfx_circle(p->px, p->py, HALO_R, (p->color == C_PING) ? C_PING_HALO : p->color);
+    gfx_circle(p->px, p->py, HALO_R, (p->color == c_ping) ? c_ping_halo : p->color);
     gfx_fill_circle(p->px, p->py, PING_R, p->color);
-    draw_label(p->lx, p->ly, p->text, 0, C_LABEL);
+    draw_label(p->lx, p->ly, p->text, 0, c_label);
 }
 
 /*
@@ -459,11 +492,16 @@ static void erase_ping(uint8_t n)
 }
 
 /*
- * format_meters - distance as "d.dm" (tenths of a meter, rounded).
+ * format_dist - distance in the current units, one decimal:
+ *   meters "d.dm"  tenths = (mm + 50) / 100
+ *   feet   "d.dft" tenths = mm * 10 / 304.8 = (mm * 100 + 1524) / 3048
+ * Returns the string length (at most 6, "19.7ft").
  */
-static uint8_t format_meters(char *buf, uint16_t mm)
+static uint8_t format_dist(char *buf, uint16_t mm)
 {
-    uint16_t tenths = (mm + 50) / 100;
+    uint8_t ft = (settings.units == UNITS_FT);
+    uint16_t tenths = ft ? (uint16_t)(((uint32_t)mm * 100 + 1524) / 3048)
+                         : (uint16_t)((mm + 50) / 100);
     uint8_t i = 0;
     uint16_t whole = tenths / 10;
 
@@ -473,7 +511,12 @@ static uint8_t format_meters(char *buf, uint16_t mm)
     buf[i++] = '0' + whole % 10;
     buf[i++] = '.';
     buf[i++] = '0' + tenths % 10;
-    buf[i++] = 'm';
+    if (ft) {
+        buf[i++] = 'f';
+        buf[i++] = 't';
+    } else {
+        buf[i++] = 'm';
+    }
     buf[i] = '\0';
     return i;
 }
@@ -551,17 +594,77 @@ static int16_t glide(int16_t cur, int16_t goal)
     return cur + d / 2;
 }
 
+static void scan_pulse(uint32_t now);
+static void scan_sweep(void);
+
 /* ---------------------------------------------------------------------- */
 /* Public                                                                  */
 /* ---------------------------------------------------------------------- */
 
 /*
- * ui_radar_init - clear the screen and draw the dome, range labels and the
- * big range text.
+ * shade - scale an RGB565 color by k/256 per channel (5/6/5 bits).
+ */
+static uint16_t shade(uint16_t c, uint8_t k)
+{
+    uint16_t r = ((c >> 11) * k) >> 8;
+    uint16_t g = (((c >> 5) & 0x3F) * k) >> 8;
+    uint16_t b = ((c & 0x1F) * k) >> 8;
+    return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
+/*
+ * blend_white - halfway between c and white: halve each channel (mask
+ * 0x7BEF drops the bit that would spill into the next channel) and add
+ * half of white.
+ */
+static uint16_t blend_white(uint16_t c)
+{
+    return (uint16_t)(((c >> 1) & 0x7BEF) + 0x7BEF);
+}
+
+/*
+ * apply_theme - derive all theme colors from the three base colors of the
+ * selected preset (or the custom palette picks).
+ */
+static void apply_theme(void)
+{
+    uint16_t base[3];
+    for (uint8_t i = 0; i < 3; i++) {
+        base[i] = (settings.theme == THEME_CUSTOM)
+                ? pgm_read_word(&ui_palette[settings.custom[i] % N_PALETTE])
+                : pgm_read_word(&theme_preset[settings.theme % 3][i]);
+    }
+    uint16_t pri = base[0], sec = base[1], ter = base[2];
+
+    c_edge      = pri;
+    c_ring      = shade(pri, 200);
+    c_line      = shade(blend_white(pri), 210);
+    c_cone      = shade(pri, 140);
+    c_pulse     = blend_white(sec);
+    c_sweep     = sec;
+    c_ping      = sec;
+    c_ping_halo = shade(sec, 150);
+    c_text      = ter;
+    c_label     = blend_white(ter);
+
+    /* Gradient: 9 % .. 50 % of the primary color inside the cone, about a
+     * third of that outside. */
+    for (uint8_t i = 0; i < 16; i++) {
+        uint8_t k = (uint8_t)(24 + i * 7);
+        fill_lut[i] = shade(pri, k);
+        dim_lut[i]  = shade(pri, (uint8_t)(k / 3 + 4));
+    }
+}
+
+/*
+ * ui_radar_init - apply the theme and units, clear the screen and draw the
+ * dome, range labels and the big range text.
  */
 void ui_radar_init(void)
 {
-    alert_r_px = (int16_t)(((int32_t)alert_get_radius() * R_PX) / RANGE_MM);
+    apply_theme();
+    range_mm = (settings.units == UNITS_FT) ? RANGE_FT_MM : RANGE_M_MM;
+    alert_r_px = (int16_t)(((int32_t)alert_get_radius() * R_PX) / range_mm);
     alert_shown = 0xFF;
 
     gfx_fill_screen(C_BG);
@@ -570,7 +673,7 @@ void ui_radar_init(void)
     /* Range labels under the baseline, at each ring on both sides. */
     for (uint8_t i = 0; i <= N_RINGS; i++) {
         int16_t r = (i < N_RINGS) ? pgm_read_byte(&ring_px[i]) : R_PX;
-        const char *lbl = (const char *)pgm_read_word(&range_lbl[i]);
+        const char *lbl = (const char *)pgm_read_word(&range_lbl[settings.units][i]);
         uint8_t len = 0;
         while (pgm_read_byte(&lbl[len])) {
             len++;
@@ -580,10 +683,14 @@ void ui_radar_init(void)
         int16_t xl = APEX_X - r - w / 2;
         if (xr + w > LCD_WIDTH) xr = LCD_WIDTH - w;
         if (xl < 0) xl = 0;
-        gfx_text_P(xr, APEX_Y + 4, lbl, C_TEXT, C_BG, 1);
-        gfx_text_P(xl, APEX_Y + 4, lbl, C_TEXT, C_BG, 1);
+        gfx_text_P(xr, APEX_Y + 4, lbl, c_text, C_BG, 1);
+        gfx_text_P(xl, APEX_Y + 4, lbl, c_text, C_BG, 1);
     }
-    gfx_text_P(APEX_X - 2 * 6, APEX_Y + 14, PSTR("6M"), COLOR_WHITE, C_BG, 2);
+    if (settings.units == UNITS_FT) {
+        gfx_text_P(APEX_X - 4 * 6, APEX_Y + 14, PSTR("20FT"), c_label, C_BG, 2);
+    } else {
+        gfx_text_P(APEX_X - 2 * 6, APEX_Y + 14, PSTR("6M"), c_label, C_BG, 2);
+    }
 
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
         pings[n].on = 0;
@@ -609,9 +716,9 @@ void ui_set_targets(void)
             continue;
         }
 
-        /* mm -> px at 156 px per 6000 mm; X mirrored if RADAR_X_SIGN = -1. */
-        int16_t dx = (int16_t)((RADAR_X_SIGN * (int32_t)t->x * R_PX) / RANGE_MM);
-        int16_t dy = (int16_t)(((int32_t)t->y * R_PX) / RANGE_MM);
+        /* mm -> px at 156 px per range_mm; X mirrored if RADAR_X_SIGN = -1. */
+        int16_t dx = (int16_t)((RADAR_X_SIGN * (int32_t)t->x * R_PX) / range_mm);
+        int16_t dy = (int16_t)(((int32_t)t->y * R_PX) / range_mm);
         int16_t adx = (dx < 0) ? -dx : dx;
         if (dy <= 0 || (int32_t)adx * COV_DY > (int32_t)dy * COV_DX) {
             continue;                   /* outside the +/-60 degree cone */
@@ -619,8 +726,8 @@ void ui_set_targets(void)
 
         g->px = APEX_X + dx;
         g->py = APEX_Y - dy;
-        g->color = (t->dist < radius) ? C_PING_HOT : C_PING;
-        g->len = format_meters(g->text, t->dist);
+        g->color = (t->dist < radius) ? C_PING_HOT : c_ping;
+        g->len = format_dist(g->text, t->dist);
         g->vx = (int16_t)(RADAR_X_SIGN * t->mx);    /* screen x right */
         g->vy = (int16_t)(-t->my);                  /* screen y down  */
         g->want = 1;
@@ -668,7 +775,6 @@ void ui_animate(void)
     }
 }
 
-#if UI_SCAN_PULSE
 /*
  * redraw_pings_near_arc / _line - put back any ping the scan just crossed,
  * so pings stay on top of the animation.
@@ -685,7 +791,6 @@ static void redraw_pings_near_arc(int16_t r_old, int16_t r_new)
         }
     }
 }
-#endif
 
 
 /*
@@ -700,7 +805,18 @@ static void redraw_pings_near_arc(int16_t r_old, int16_t r_new)
  */
 void ui_scan_step(uint32_t now)
 {
-#if UI_SCAN_PULSE
+    if (settings.scan == SCAN_PULSE) {
+        scan_pulse(now);
+    } else {
+        scan_sweep();
+    }
+}
+
+/*
+ * scan_pulse - one step of the expanding ring.
+ */
+static void scan_pulse(uint32_t now)
+{
     int16_t r = PULSE_MIN + (int16_t)(((now - pulse_t0) * PULSE_PX_PER_S) / 1000UL);
     if (pulse_r == 0 || r > R_PX - 3) {
         pulse_t0 = now;
@@ -713,13 +829,18 @@ void ui_scan_step(uint32_t now)
      * (erasing first made the outer part blink out on every step). */
     int16_t old_r = pulse_r;
     pulse_r = r;
-    arc_walk(pulse_r, C_PULSE, 0);
+    arc_walk(pulse_r, c_pulse, 0);
     if (old_r) {
         arc_walk(old_r, 0, bg_color_at);
     }
     redraw_pings_near_arc(old_r, pulse_r);
-#else
-    (void)now;
+}
+
+/*
+ * scan_sweep - one step of the bouncing sweep line.
+ */
+static void scan_sweep(void)
+{
     int16_t old_deg = sweep_deg;
     if (sweep_drawn) {
         gfx_line_fn(APEX_X, APEX_Y, sweep_ex, sweep_ey, bg_color_at);
@@ -734,7 +855,7 @@ void ui_scan_step(uint32_t now)
     }
     sweep_ex = APEX_X + (int16_t)(((int32_t)SWEEP_R * sin_q15(sweep_deg)) >> 15);
     sweep_ey = APEX_Y - (int16_t)(((int32_t)SWEEP_R * cos_q15(sweep_deg)) >> 15);
-    gfx_line(APEX_X, APEX_Y, sweep_ex, sweep_ey, C_SWEEP);
+    gfx_line(APEX_X, APEX_Y, sweep_ex, sweep_ey, c_sweep);
     sweep_drawn = 1;
 
     for (uint8_t n = 0; n < RADAR_TARGETS; n++) {
@@ -746,7 +867,6 @@ void ui_scan_step(uint32_t now)
             draw_ping(n);
         }
     }
-#endif
 }
 
 /*
@@ -766,7 +886,7 @@ void ui_alert_status(uint8_t state, uint8_t secs)
     if (alert_shown == 0xFF) {
         char buf[LABEL_MAX + 1];
         int16_t x = gfx_text_P(4, 231, PSTR("ZONE "), C_STATUS, C_BG, 1);
-        format_meters(buf, alert_get_radius());
+        format_dist(buf, alert_get_radius());
         x = gfx_text(x, 231, buf, C_ALERT, C_BG, 1);
         if (alert_get_mute()) {
             gfx_text_P(x, 231, PSTR("  MUTED"), C_STATUS, C_BG, 1);
@@ -802,8 +922,8 @@ void ui_debug_target(void)
 
     x = gfx_text_P(4, 24, PSTR("FLT"), C_STATUS, C_BG, 1);
     if (t->shown) {
-        x = gfx_int_pad(x, 24, t->x, 6, C_TEXT, C_BG, 1);
-        gfx_int_pad(x, 24, t->y, 6, C_TEXT, C_BG, 1);
+        x = gfx_int_pad(x, 24, t->x, 6, c_text, C_BG, 1);
+        gfx_int_pad(x, 24, t->y, 6, c_text, C_BG, 1);
     } else {
         gfx_text_P(x, 24, PSTR("     -     -"), C_STATUS, C_BG, 1);
     }
