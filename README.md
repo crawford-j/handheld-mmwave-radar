@@ -23,7 +23,8 @@ controller.
   disable the alarm. A short press while running re-arms
 - Tap the speaker icon on the radar view to mute or unmute (saved)
 - Looping animation on the standby screen, converted from any GIF
-- Touch menu (stylus): units (m / ft), alert radius, debug overlay,
+- Touch menu (stylus): units (m / ft), alert radius, minimum range
+  (0.5-1.5 m, the area inside is blacked out on the view), debug overlay,
   scan style (pulse or sweep line), and color themes: 3 presets, or custom
   primary/secondary/tertiary colors from a palette
 - Settings saved to EEPROM (magic byte, version, checksum) and restored at
