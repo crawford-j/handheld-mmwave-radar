@@ -56,10 +56,12 @@ def default_frames(size, n=12):
     return frames
 
 
-def gif_frames(path, size, max_frames, threshold, invert, dither, crop):
+def gif_frames(path, size, max_frames, threshold, invert, dither, crop, frange):
     src = Image.open(path)
     raw = []
-    for fr in ImageSequence.Iterator(src):
+    for i, fr in enumerate(ImageSequence.Iterator(src)):
+        if frange and not (frange[0] <= i < frange[1]):
+            continue
         delay = int(fr.info.get("duration", 100) or 100)
         rgba = fr.convert("RGBA")
         bg = Image.new("RGBA", rgba.size, (0, 0, 0, 255) if not invert else (255,) * 4)
@@ -181,14 +183,16 @@ def main():
     ap.add_argument("--threshold", type=int, help="0-255 cut-off (default: mean)")
     ap.add_argument("--invert", action="store_true", help="dark subject on light background")
     ap.add_argument("--dither", action="store_true", help="dither instead of a hard cut-off (photos)")
+    ap.add_argument("--range", help="a:b keep only GIF frames a..b-1 (a short loop)")
     ap.add_argument("--crop", help="x0,y0,x1,y1 crop in source pixels before resizing")
     ap.add_argument("--preview", help="also save a PNG strip of the frames (2x) here")
     args = ap.parse_args()
 
     if args.gif:
         crop = tuple(int(v) for v in args.crop.split(",")) if args.crop else None
+        frange = tuple(int(v) for v in args.range.split(":")) if args.range else None
         frames, thr = gif_frames(args.gif, args.size, args.frames, args.threshold,
-                                 args.invert, args.dither, crop)
+                                 args.invert, args.dither, crop, frange)
         print("dithered" if args.dither else f"threshold {thr}")
         write(frames, Path(args.gif).name)
     else:
