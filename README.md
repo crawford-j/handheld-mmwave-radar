@@ -17,7 +17,10 @@ controller.
   ghost rejection, gliding pings and direction arrows
 - Alert zone (default 1.5 m) with hysteresis: a passive buzzer beeps faster as
   a target gets closer, and holds a solid tone under 1 m
-- Arming delay at power-up, and a button to re-arm after mounting
+- Arming delay at power-up, and a button to re-arm after mounting; no pings
+  are shown while arming
+- Standby: hold the button 1.5 s to blank the screen and disable the alarm;
+  press it (or tap the screen) to wake and re-arm
 - Touch menu (stylus): units (m / ft), alert radius, mute, debug overlay,
   scan style (pulse or sweep line), and color themes: 3 presets, or custom
   primary/secondary/tertiary colors from a palette
@@ -33,7 +36,7 @@ controller.
 | ILI9341 2.8" TFT + XPT2046 | Display and resistive touch, SPI |
 | TXS0108E | 5 V / 3.3 V level shifter |
 | Passive buzzer | Alert tone (Timer2 / OC2B) |
-| Push button | Re-arm the alarm |
+| Push button | Re-arm the alarm (short press), standby (hold 1.5 s) |
 
 ### Pin map
 
