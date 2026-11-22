@@ -227,3 +227,13 @@ project, and the design report.
   the chalk toss: every 3rd frame from 3 to 27 (frame 19 is a camera
   flash), cut-off 95 so the arms don't merge into the cloud, 80 x 68 px
   shown at 160 x 136, 6.1 KB. Firmware 28.4 KB.
+- On the board, the arena light above the player merged with the chalk
+  cloud into one blob. Two fixes were tried in the converter:
+  - A static-light mask (`--mask-from`): pixels lit in every frame before
+    the toss count as the light and are removed. Failed: the player and
+    crowd barely move in those frames, so they were erased too, and the
+    chalk got holes where it crosses the light.
+  - A higher cut-off in the top part of the frame only (`--region`): the
+    light's glow is mid-gray with a small white core, while the chalk is
+    near-white, so a cut-off of 225 in the top 38 rows keeps the chalk and
+    shrinks the light to a small ring and a thin streak. Used this.
