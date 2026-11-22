@@ -171,13 +171,30 @@ Differences from the original proposal:
   38400. The radar only sends its full ~11 frames/s at 256000, and the
   250000 link measured zero errors. See DESIGN_NOTES "Radar UART baud rate".
 - **Display:** a half-dome with the ±60° coverage cone and an expanding
-  pulse. The rotating sweep line is kept as a build option
-  (`UI_SCAN_PULSE=0`) and will be a menu choice.
+  pulse. The rotating sweep line from the proposal is a menu choice
+  (SCAN: PULSE / SWEEP).
 - **Handheld mode:** tried and removed. The radar can't separate its own
   motion from targets without a gyro. The device is used set down or
   mounted.
-- **D2 button:** re-arms the alarm (quiet countdown) instead of being
-  optional.
+- **D2 button:** short press re-arms the alarm (quiet countdown), long
+  press enters standby, instead of being optional.
+- **Mute:** moved out of the menu to a tap on the speaker icon.
+
+### Beyond the original plan
+
+With handheld mode dropped, the device became a stationary presence radar,
+and the proposal feedback asked for more functionality. Added on top of the
+seven milestones, all with no wiring changes:
+
+| Area | Addition | Why |
+|---|---|---|
+| Tracking | alpha-beta filter with adaptive gains, confirm/hold ghost rejection, stricter confirm under 1 m, gliding pings, direction arrows | a still radar sees room noise and ghosts; the filter keeps real targets steady without lag |
+| Alarm | hysteresis, entry debounce, distance-scaled beep rate, solid tone under 1 m | no chattering at the zone edge, no false alarms from brief ghosts |
+| Setup | boots into standby; button or tap starts an 8 s arming countdown; no pings while arming | place the device, start it, walk away before it's live |
+| Standby | long press, Idle sleep between interrupts, looping animation from a GIF (PC-side converter) | a usable on/off state without power hardware |
+| Robustness | radar-lost timeout (targets cleared, alarm off, NO RADAR) | a disconnected radar used to freeze the last target and could hold the alarm on |
+| Touch UI | calibration tool, settings menu, 3 themes plus a custom 3-color palette, mute icon | stylus-driven configuration at the device |
+| Storage | register-level EEPROM driver with magic, version and checksum | settings survive power cycles |
 
 ### Milestone 6 scope (touch, stylus-friendly)
 
@@ -197,4 +214,5 @@ Differences from the original proposal:
 
 All menu settings, including the theme colors, are saved with a magic
 byte, version and checksum. Defaults are used on a blank or corrupt EEPROM,
-and writes use `eeprom_update_*` so unchanged bytes aren't rewritten.
+and writes go through the register-level `nvm_update()`, which skips
+bytes that haven't changed.
