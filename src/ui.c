@@ -174,6 +174,7 @@ static int16_t  sweep_ex, sweep_ey;
 static uint8_t  sweep_drawn;
 
 static int16_t alert_r_px;          /* alert-zone ring radius, px (0 = none)   */
+static int16_t min_r_px;            /* minimum-range radius, px: black inside  */
 static uint8_t alert_shown = 0xFF;  /* ALERT text state on screen (0xFF = none) */
 
 /* ---------------------------------------------------------------------- */
@@ -188,6 +189,8 @@ static uint8_t alert_shown = 0xFF;  /* ALERT text state on screen (0xFF = none) 
  *   below the baseline or outside R          -> black
  *   rim: d in about [R-1.5, R+0.5]           -> bright edge (2 px thick)
  *   baseline (dy == 0): dashes, 4 px on/off  -> line color
+ *   inside the minimum range (d < min_r_px)  -> black: the radar ignores
+ *     everything there, so the view doesn't pretend to cover it
  *   alert ring at the alert radius           -> red
  *   range ring: |d^2 - r^2| <= r (d within half a pixel of r), dotted by
  *     drawing only where (x + y) & 2         -> ring color
@@ -218,6 +221,10 @@ static uint16_t bg_color_at(int16_t x, int16_t y)
     int16_t adx = (dx < 0) ? -dx : dx;
     if (dy == 0) {
         return ((adx >> 2) & 1) ? c_line : C_BG;
+    }
+
+    if (d2 < (int32_t)min_r_px * min_r_px) {
+        return C_BG;
     }
 
     if (alert_r_px) {
@@ -718,6 +725,7 @@ void ui_radar_init(void)
     apply_theme();
     range_mm = (settings.units == UNITS_FT) ? RANGE_FT_MM : RANGE_M_MM;
     alert_r_px = (int16_t)(((int32_t)alert_get_radius() * R_PX) / range_mm);
+    min_r_px   = (int16_t)(((int32_t)track_get_min_range() * R_PX) / range_mm);
     alert_shown = 0xFF;
 
     gfx_fill_screen(C_BG);
@@ -954,10 +962,12 @@ void ui_scan_step(uint32_t now)
  */
 static void scan_pulse(uint32_t now)
 {
-    int16_t r = PULSE_MIN + (int16_t)(((now - pulse_t0) * PULSE_PX_PER_S) / 1000UL);
+    /* The pulse starts at the edge of the black minimum-range area. */
+    int16_t r0 = (min_r_px > PULSE_MIN) ? min_r_px : PULSE_MIN;
+    int16_t r = r0 + (int16_t)(((now - pulse_t0) * PULSE_PX_PER_S) / 1000UL);
     if (pulse_r == 0 || r > R_PX - 3) {
         pulse_t0 = now;
-        r = PULSE_MIN;
+        r = r0;
     }
     if (r == pulse_r) {
         return;
