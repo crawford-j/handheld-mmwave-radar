@@ -3,16 +3,17 @@
  *
  * Target: ATmega328P @ 16 MHz (Arduino Uno R3), avr-gcc, no Arduino core.
  *
- * Milestone 5: alert zone. The nearest confirmed target inside the alert
- * radius sets off the buzzer (Timer2 tone on D3), beeping faster as it
- * gets closer, with hysteresis at the edge (alert.c, buzzer.c).
+ * Flow:
+ *   radar UART -> uart_radar.c (ring buffer + frame parser)
+ *              -> track.c      (range gate, confirm/hold, alpha-beta filter)
+ *              -> alert.c      (zone, hysteresis, arming) -> buzzer.c
+ *              -> ui.c         (dome, scan, gliding pings)
+ *   touch tap  -> menu.c       (settings, themes)  -> settings.c
+ *   D2 button  -> re-arm the alarm
  *
- * Milestone 4: smoothing and direction arrows. Radar frames go through
- * track.c (range gate, confirm/hold, adaptive EMA, motion history); the
- * radar view glides each ping toward its filtered position and draws an
- * arrow showing which way the target is moving.
- * (Milestone 2's raw-number screen and milestone 3's unfiltered view are in
- * the git history.)
+ * Build options (Makefile): DEMO=1 synthetic targets, RADAR_SETUP=1 radar
+ * baud tool, TOUCH_CAL=1 touch calibration. Earlier milestone screens are
+ * in the git history.
  */
 
 #include "board.h"
@@ -25,6 +26,9 @@
 #include "alert.h"
 #include "buzzer.h"
 #include "button.h"
+#include "touch.h"
+#include "settings.h"
+#include "menu.h"
 #include "ui.h"
 
 /* `make RADAR_SETUP=1` builds the one-time radar baud switch instead of the
@@ -53,23 +57,70 @@
 #include "demo.h"
 #endif
 
-#define FRAME_TICK_MS   30      /* scan step + ping glide, ~33 per second */
-#define STATUS_MS       500     /* debug line refresh                          */
-#define DEBUG_MS        200     /* raw vs filtered readout refresh             */
-#define RATE_WINDOW_MS  1000    /* frame-rate measurement window               */
+#define FRAME_TICK_MS   30      /* scan step + ping glide, ~33 per second    */
+#define STATUS_MS       500     /* debug line refresh                        */
+#define DEBUG_MS        200     /* raw vs filtered readout + arming refresh  */
+#define RATE_WINDOW_MS  1000    /* frame-rate measurement window             */
+#define TOUCH_MS        50      /* touch-screen poll in the radar view       */
+
+static radar_frame_t frame;     /* latest decoded frame (static: off the stack) */
 
 /*
- * main - init, then loop: parse radar bytes and filter each new frame,
- * then on a 40 ms tick step the sweep and glide the pings; refresh the
- * status line every 500 ms.
+ * poll_radar - feed every newly completed frame through the filter.
+ * Returns 1 if at least one frame arrived.
+ */
+static uint8_t poll_radar(void)
+{
+    uint8_t have_new = 0;
+#if DEMO
+    if (demo_frame(tick_ms(), &frame)) {
+        track_update(&frame);
+        have_new = 1;
+    }
+#else
+    while (radar_poll(&frame)) {
+        track_update(&frame);
+        have_new = 1;
+    }
+#endif
+    return have_new;
+}
+
+/*
+ * menu_idle - runs while the menu is open: keep reading the radar so its
+ * bytes don't pile up in the ring buffer. Nothing is drawn.
+ */
+static void menu_idle(void)
+{
+    poll_radar();
+}
+
+/*
+ * open_menu - silence the alarm, run the menu, then apply the settings,
+ * redraw the radar view and re-arm (8 s countdown), so changing settings
+ * at the device never sets the alarm off.
+ */
+static void open_menu(void)
+{
+    alert_rearm(tick_ms());
+    menu_run(menu_idle);
+    settings_apply();
+    ui_radar_init();
+    alert_rearm(tick_ms());
+    ui_alert_status(alert_state(tick_ms()), alert_arming_secs(tick_ms()));
+}
+
+/*
+ * main - init, then loop: parse radar frames, update targets and the alarm;
+ * every 30 ms step the scan and glide the pings; poll touch every 50 ms
+ * (a tap opens the menu); refresh debug lines on slower timers.
  *
- * Every task is short (a sweep step is at most ~30 ms of SPI traffic), and
+ * Every task is short (a scan step is at most ~25 ms of SPI traffic), and
  * the 128-byte ring buffer holds ~0.4 s of radar data, so no bytes are lost
  * while drawing.
  */
 int main(void)
 {
-    static radar_frame_t frame;         /* static: keep it off the stack */
     radar_stats_t stats;
 
     spi_init();
@@ -84,6 +135,9 @@ int main(void)
     touch_cal_run();                    /* never returns */
 #endif
 
+    settings_defaults();
+    settings_apply();
+    touch_init();
     ui_radar_init();
 
     tick_init();
@@ -95,29 +149,19 @@ int main(void)
     uint32_t last_tick   = 0;
     uint32_t last_status = 0;
     uint32_t last_debug  = 0;
+    uint32_t last_touch  = 0;
     uint32_t rate_start  = 0;
     uint16_t rate_count0 = 0;
     uint16_t hz          = 0;
     uint16_t draw_max    = 0;           /* longest tick since last status (ms) */
+    uint8_t  touch_was   = 1;           /* require a release before the first tap */
 
     for (;;) {
         uint32_t now = tick_ms();
 
-        /* Every complete frame goes through the filter (about 11 per second);
-         * the filtered targets become the pings' new goals. */
-        uint8_t have_new = 0;
-#if DEMO
-        if (demo_frame(now, &frame)) {
-            track_update(&frame);
-            have_new = 1;
-        }
-#else
-        while (radar_poll(&frame)) {
-            track_update(&frame);
-            have_new = 1;
-        }
-#endif
-        if (have_new) {
+        /* Every complete frame goes through the filter (about 11 per
+         * second); the filtered targets become the pings' new goals. */
+        if (poll_radar()) {
             ui_set_targets();
             alert_update(now);
             ui_alert_status(alert_state(now), alert_arming_secs(now));
@@ -130,6 +174,18 @@ int main(void)
             ui_alert_status(alert_state(now), alert_arming_secs(now));
         }
 
+        /* Touch: a new tap anywhere on the radar view opens the menu. */
+        if ((now - last_touch) >= TOUCH_MS) {
+            last_touch = now;
+            int16_t tx, ty;
+            uint8_t down = touch_read(&tx, &ty);
+            if (down && !touch_was) {
+                open_menu();
+                last_status = last_debug = 0;   /* redraw the debug lines */
+                down = 1;                       /* wait for a release again */
+            }
+            touch_was = down;
+        }
 
         if ((now - last_tick) >= FRAME_TICK_MS) {
             last_tick = now;
@@ -143,7 +199,9 @@ int main(void)
 
         if ((now - last_debug) >= DEBUG_MS) {
             last_debug = now;
-            ui_debug_target();
+            if (settings.debug) {
+                ui_debug_target();
+            }
             /* keeps the ARMING countdown ticking between radar frames */
             ui_alert_status(alert_state(now), alert_arming_secs(now));
         }
@@ -157,7 +215,9 @@ int main(void)
                 rate_start  = now;
                 rate_count0 = stats.frames_ok;
             }
-            ui_status(&stats, hz, draw_max);
+            if (settings.debug) {
+                ui_status(&stats, hz, draw_max);
+            }
             draw_max = 0;
         }
     }
