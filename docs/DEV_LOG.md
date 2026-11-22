@@ -191,3 +191,8 @@ project, and the design report.
   an active alarm would never have stopped. Fixed with a 1 s radar-lost
   timeout: targets are dropped, the alarm clears and NO RADAR shows until
   frames come back.
+- Standby GIF: the team picked two NBA clips. 1-bit previews of crops,
+  thresholds and dithering were compared; heat.gif's close-up (9 frames,
+  80 x 62 px) was chosen. The clips are copyrighted, so they and the frames
+  made from them stay out of the public repo (`--local`, git-ignored); the
+  published build keeps the radar-scope animation.
