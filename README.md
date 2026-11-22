@@ -18,9 +18,11 @@ controller.
 - Alert zone (default 1.5 m) with hysteresis: a passive buzzer beeps faster as
   a target gets closer, and holds a solid tone under 1 m
 - Arming delay at power-up, and a button to re-arm after mounting
-- Touch menu (in progress): units (m / ft), alert radius, mute, scan style,
-  and color themes (3 presets plus custom primary/secondary/tertiary colors)
-- Settings saved to EEPROM with a checksum (in progress)
+- Touch menu (stylus): units (m / ft), alert radius, mute, debug overlay,
+  scan style (pulse or sweep line), and color themes: 3 presets, or custom
+  primary/secondary/tertiary colors from a palette
+- Settings saved to EEPROM (magic byte, version, checksum) and restored at
+  power-up; reset to defaults from the menu
 
 ## Hardware
 
@@ -58,6 +60,7 @@ make                 # build and print flash/SRAM usage
 make flash           # upload with avrdude (set PORT in the Makefile)
 make DEMO=1          # synthetic targets instead of the radar, for UI testing
 make RADAR_SETUP=1   # one-time radar baud configuration tool
+make TOUCH_CAL=1     # touch-screen calibration tool
 ```
 
 The radar's TX wire must be disconnected from D0 while uploading.
